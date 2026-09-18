@@ -42,9 +42,19 @@ fun TabloTvApp(
     val tabloDevice by viewModel.tabloDevice.collectAsState()
     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
+    val isConnecting by viewModel.isConnecting.collectAsState()
+    val connectionError by viewModel.connectionError.collectAsState()
     val savedMultiviews by viewModel.savedMultiviews.collectAsState()
 
     var showQuickSaveDialog by remember { mutableStateOf(false) }
+
+    fun handleSectionSelect(section: TvScreenSection) {
+        if (tabloDevice == null && section != TvScreenSection.TABLO) {
+            viewModel.setSection(TvScreenSection.TABLO)
+        } else {
+            viewModel.setSection(section)
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -116,10 +126,17 @@ fun TabloTvApp(
                         currentDevice = tabloDevice,
                         discoveredDevices = discoveredDevices,
                         isScanning = isScanning,
+                        isConnecting = isConnecting,
+                        connectionError = connectionError,
                         onStartScan = { viewModel.startDiscovery() },
                         onSelectDevice = { viewModel.selectDevice(it) },
                         onManualConnect = { viewModel.connectDirectIp(it) },
-                        onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
+                        onDisconnect = { viewModel.disconnect() },
+                        onBack = {
+                            if (tabloDevice != null) {
+                                viewModel.setSection(TvScreenSection.MULTIVIEW)
+                            }
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -132,7 +149,7 @@ fun TabloTvApp(
             currentLayout = currentLayout,
             tabloDevice = tabloDevice,
             visible = isQuickBarVisible || currentSection != TvScreenSection.MULTIVIEW,
-            onSelectSection = { viewModel.setSection(it) },
+            onSelectSection = { handleSectionSelect(it) },
             onSelectLayout = { viewModel.setLayout(it) },
             onSaveCurrentMultiview = { showQuickSaveDialog = true },
             modifier = Modifier.align(Alignment.TopCenter)

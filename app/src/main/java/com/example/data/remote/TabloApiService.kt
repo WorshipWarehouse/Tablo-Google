@@ -14,9 +14,14 @@ interface TabloApiService {
     ): TabloServerInfoResponse
 
     @GET
+    suspend fun getGuideStatus(
+        @Url url: String
+    ): TabloGuideStatusResponse
+
+    @GET
     suspend fun getTuners(
         @Url url: String
-    ): Map<String, Any?>
+    ): List<TabloTunerResponse>
 
     @GET
     suspend fun getChannelPaths(
@@ -38,6 +43,25 @@ interface TabloApiService {
         @Url url: String
     ): TabloAiringDetailResponse
 
+    /**
+     * Batch load a set of airing/show paths in a single request. Responses are
+     * keyed by the submitted path and may contain nulls for unresolved paths.
+     */
+    @POST
+    suspend fun postBatch(
+        @Url url: String,
+        @Body body: List<String>
+    ): Map<String, TabloAiringDetailResponse?>
+
+    /**
+     * Batch load a set of channel paths in a single request.
+     */
+    @POST
+    suspend fun postChannelBatch(
+        @Url url: String,
+        @Body body: List<String>
+    ): Map<String, TabloChannelDetailResponse?>
+
     @POST
     suspend fun postWatch(
         @Url url: String,
@@ -46,6 +70,6 @@ interface TabloApiService {
 
     @GET
     suspend fun getAssociationServerInfo(
-        @Url url: String = "https://api.tablotv.com/assocserver/getserverinfo"
-    ): TabloAssocServerResponse
+        @Url url: String = "https://api.tablotv.com/assocserver/getipinfo/"
+    ): TabloAssocInfoResponse
 }

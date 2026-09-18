@@ -68,7 +68,7 @@ fun SearchScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("ALL") }
 
-    val categories = listOf("ALL", "SPORTS", "NEWS", "MOVIES", "SERIES")
+    val categories = listOf("ALL", "SPORTS", "MOVIES", "SERIES")
 
     // Filtered airings and channels
     val filteredResults = remember(searchQuery, selectedCategory, airings, channels) {
@@ -89,9 +89,8 @@ fun SearchScreen(
             val matchCategory = when (selectedCategory) {
                 "ALL" -> true
                 "SPORTS" -> airing.category.equals("Sports", ignoreCase = true)
-                "NEWS" -> airing.category.equals("News", ignoreCase = true)
                 "MOVIES" -> airing.category.equals("Movies", ignoreCase = true) || airing.category.equals("Drama", ignoreCase = true)
-                "SERIES" -> !airing.category.equals("Sports", ignoreCase = true) && !airing.category.equals("News", ignoreCase = true)
+                "SERIES" -> airing.category.equals("Series", ignoreCase = true)
                 else -> true
             }
 
@@ -204,29 +203,54 @@ fun SearchScreen(
                     modifier = Modifier.padding(bottom = 10.dp)
                 )
 
+                // Search scope note
+                if (airings.isEmpty()) {
+                    Text(
+                        text = "No guide data is loaded yet. Search only covers the currently loaded guide window; visit the TV Guide to refresh programming.",
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                }
+
                 // Results List
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(filteredResults) { result ->
-                        when (result) {
-                            is SearchResultItem.AiringItem -> {
-                                SearchAiringResultCard(
-                                    airing = result.airing,
-                                    channel = result.channel,
-                                    onClick = {
-                                        if (result.channel != null) {
-                                            onSelectChannel(result.channel)
+                if (filteredResults.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No broadcasts match your search",
+                            color = TextMuted,
+                            fontSize = 14.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(filteredResults) { result ->
+                            when (result) {
+                                is SearchResultItem.AiringItem -> {
+                                    SearchAiringResultCard(
+                                        airing = result.airing,
+                                        channel = result.channel,
+                                        onClick = {
+                                            if (result.channel != null) {
+                                                onSelectChannel(result.channel)
+                                            }
                                         }
-                                    }
-                                )
-                            }
-                            is SearchResultItem.ChannelItem -> {
-                                SearchChannelResultCard(
-                                    channel = result.channel,
-                                    onClick = { onSelectChannel(result.channel) }
-                                )
+                                    )
+                                }
+                                is SearchResultItem.ChannelItem -> {
+                                    SearchChannelResultCard(
+                                        channel = result.channel,
+                                        onClick = { onSelectChannel(result.channel) }
+                                    )
+                                }
                             }
                         }
                     }

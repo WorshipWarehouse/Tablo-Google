@@ -144,24 +144,40 @@ fun TvQuickBar(
                             .background(Color(0x331E293B), RoundedCornerShape(8.dp))
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        val deviceName = tabloDevice?.name ?: "Living Room Tablo"
-                        val tunersTotal = tabloDevice?.tunerCount ?: 4
-                        val tunersInUse = tabloDevice?.activeTuners ?: 0
-                        val available = tunersTotal - tunersInUse
+                        if (tabloDevice == null) {
+                            Icon(
+                                imageVector = Icons.Default.Router,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Not Connected",
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } else {
+                            val deviceName = tabloDevice.name
+                            val tunersTotal = tabloDevice.tunerCount
+                            val tunersInUse = tabloDevice.activeTuners
+                            val available = tunersTotal - tunersInUse
 
-                        Icon(
-                            imageVector = Icons.Default.Router,
-                            contentDescription = null,
-                            tint = TabloTeal,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "$deviceName ($available/$tunersTotal Tuners Free)",
-                            color = TextSecondary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                            Icon(
+                                imageVector = Icons.Default.Router,
+                                contentDescription = null,
+                                tint = TabloTeal,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "$deviceName ($available/$tunersTotal Tuners Free)",
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
 

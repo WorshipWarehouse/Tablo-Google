@@ -70,9 +70,12 @@ fun TabloConnectionScreen(
     currentDevice: TabloDevice?,
     discoveredDevices: List<TabloDevice>,
     isScanning: Boolean,
+    isConnecting: Boolean,
+    connectionError: String?,
     onStartScan: () -> Unit,
     onSelectDevice: (TabloDevice) -> Unit,
     onManualConnect: (String) -> Unit,
+    onDisconnect: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -119,22 +122,45 @@ fun TabloConnectionScreen(
                     ConnectedDeviceCard(device = currentDevice)
                 }
 
+                // Connection Error / Guidance Banner
+                if (connectionError != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x22EF4444))
+                            .border(BorderStroke(1.dp, Color(0x55EF4444)), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = connectionError,
+                            color = TextPrimary,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
                 // Discovery Action Buttons
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
                         onClick = onStartScan,
-                        enabled = !isScanning,
+                        enabled = !isScanning && !isConnecting,
                         colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
                         modifier = Modifier.height(44.dp)
                     ) {
-                        if (isScanning) {
+                        if (isScanning || isConnecting) {
                             CircularProgressIndicator(
                                 color = Color.Black,
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Discovering...", color = Color.Black, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isScanning) "Discovering..." else "Connecting...",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold
+                            )
                         } else {
                             Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.Black)
                             Spacer(modifier = Modifier.width(8.dp))
@@ -144,12 +170,26 @@ fun TabloConnectionScreen(
 
                     Button(
                         onClick = { showManualIpDialog = true },
+                        enabled = !isScanning && !isConnecting,
                         colors = ButtonDefaults.buttonColors(containerColor = TvSurfaceElevated),
                         modifier = Modifier.height(44.dp)
                     ) {
                         Icon(Icons.Default.SettingsEthernet, contentDescription = null, tint = TabloTeal)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Enter IP Manually", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    if (currentDevice != null) {
+                        Button(
+                            onClick = onDisconnect,
+                            enabled = !isScanning && !isConnecting,
+                            colors = ButtonDefaults.buttonColors(containerColor = LiveRed.copy(alpha = 0.2f)),
+                            modifier = Modifier.height(44.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = null, tint = LiveRed)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Disconnect", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
 

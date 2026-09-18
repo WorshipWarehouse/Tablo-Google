@@ -16,9 +16,8 @@ data class TabloDevice(
     val streamingPort: Int = 80,
     val tunerCount: Int = 4,
     val activeTuners: Int = 0,
-    val isConnected: Boolean = true,
-    val firmware: String = "2.2.44",
-    val macAddress: String = "50:87:B8:00:12:34"
+    val isConnected: Boolean = false,
+    val firmware: String = ""
 ) {
     val localBaseUrl: String
         get() = "http://$host:$port"
@@ -33,7 +32,7 @@ data class TabloChannel(
     val majorNumber: Int,
     val minorNumber: Int,
     val network: String,
-    val resolution: String = "1080i",
+    val resolution: String = "",
     val channelPath: String = "/guide/channels/$channelId",
     val logoUrl: String? = null,
     val streamUrl: String = ""
@@ -50,9 +49,9 @@ data class TabloAiring(
     val description: String? = null,
     val startTimeMillis: Long,
     val durationSeconds: Long = 1800L,
-    val category: String = "General",
-    val rating: String = "TV-PG",
-    val isLive: Boolean = true,
+    val category: String = "Program",
+    val rating: String = "",
+    val isLive: Boolean = false,
     val thumbnail: String? = null
 ) {
     val endTimeMillis: Long
@@ -61,7 +60,7 @@ data class TabloAiring(
 
 data class MultiviewTileState(
     val tileId: Int,
-    val channel: TabloChannel,
+    val channel: TabloChannel?,
     val currentAiring: TabloAiring? = null,
     val isAudioFocused: Boolean = false,
     val isBuffering: Boolean = false,
@@ -76,3 +75,25 @@ data class SavedMultiviewItem(
     val preferredAudioChannelId: String,
     val createdAt: Long = System.currentTimeMillis()
 )
+
+sealed class TabloResult<out T> {
+    data class Success<T>(val data: T) : TabloResult<T>()
+    data class Error(val message: String) : TabloResult<Nothing>()
+}
+
+object GuideTiming {
+    const val SLOT_MINUTES = 30L
+    const val SLOT_COUNT = 12
+    const val WINDOW_MINUTES = SLOT_MINUTES * SLOT_COUNT
+
+    fun windowStartMs(now: Long = System.currentTimeMillis()): Long {
+        val slotMs = SLOT_MINUTES * 60_000L
+        return (now / slotMs) * slotMs
+    }
+
+    fun windowEndMs(now: Long = System.currentTimeMillis()): Long =
+        windowStartMs(now) + (WINDOW_MINUTES * 60_000L)
+
+    fun slotTimeMs(windowStart: Long, slotIndex: Int): Long =
+        windowStart + (slotIndex * SLOT_MINUTES * 60_000L)
+}

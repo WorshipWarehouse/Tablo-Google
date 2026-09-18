@@ -67,7 +67,7 @@ import com.example.ui.theme.TvSurfaceElevated
 @Composable
 fun SavedMultiviewsScreen(
     savedItems: List<SavedMultiviewItem>,
-    currentChannels: List<TabloChannel>,
+    currentChannels: List<TabloChannel?>,
     currentLayout: MultiviewLayoutType,
     onLoadMultiview: (SavedMultiviewItem) -> Unit,
     onSaveNewMultiview: (String, MultiviewLayoutType, List<TabloChannel>) -> Unit,
@@ -178,7 +178,7 @@ fun SavedMultiviewsScreen(
                 defaultName = "My Multiview",
                 onSave = { name ->
                     showSaveDialog = false
-                    onSaveNewMultiview(name, currentLayout, currentChannels)
+                    onSaveNewMultiview(name, currentLayout, currentChannels.filterNotNull())
                 },
                 onDismiss = { showSaveDialog = false }
             )

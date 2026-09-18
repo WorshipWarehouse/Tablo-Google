@@ -15,15 +15,14 @@ Inspired by the YouTube TV multiview experience, this application lets you monit
   - Presets & Quick Saves: Save custom 4-channel multiview layouts to local Room storage for instant recall.
 
 - **Electronic Program Guide (EPG)**:
-  - Timeline channel guide showing live broadcasts, upcoming programming, air times, and descriptions.
-  - Channel badge overlays displaying network logos, call signs, and broadcast resolutions (1080i, 720p).
+  - Time-grid channel guide showing live broadcasts, upcoming programming, air times, and descriptions.
+  - Channel badges displaying call signs, networks, and broadcast resolutions (1080i, 720p).
   - Quick-tune directly into any channel from the guide.
 
 - **Tablo Device Discovery & Connectivity**:
-  - Automatic local network discovery for Tablo DUAL, QUAD, and 4th Gen DVRs.
-  - Tablo Cloud Association API integration (`api.tablotv.com`) for paired device resolution.
+  - Automatic local network discovery for Tablo DUAL, QUAD, and 4th Gen DVRs via UDP broadcast and the Tablo Association API (`api.tablotv.com`).
   - Manual IP address direct connection for custom subnets.
-  - Built-in demo mode with active test streams for immediate testing without local hardware.
+  - All channels, guide listings, search results, and streams come from the connected device — no demo or placeholder content.
 
 - **TV-First 10-Foot UI**:
   - Designed specifically for Android TV, Google TV, and Amazon Fire TV remotes.
@@ -49,34 +48,37 @@ Inspired by the YouTube TV multiview experience, this application lets you monit
 ```text
 app/src/main/java/com/example/
 ├── data/
-│   ├── TabloRepository.kt            # Central repository for channels, airings, & streams
+│   ├── TabloRepository.kt            # Central repository: channels, guide, & watch streams
 │   ├── local/
-│   │   ├── AppDatabase.kt            # Room database configuration
+│   │   ├── AppDatabase.kt            # Room database configuration (v2)
 │   │   ├── SavedMultiviewDao.kt      # DAO for saved multiview presets
 │   │   ├── SavedMultiviewEntity.kt   # Preset entity model
-│   │   └── SavedMultiviewRepository.kt
+│   │   ├── SavedMultiviewRepository.kt
+│   │   ├── TabloDeviceDao.kt         # DAO for the persisted connected device
+│   │   ├── TabloDeviceEntity.kt      # Connected-device entity model
+│   │   └── TabloDeviceRepository.kt
 │   └── remote/
-│       ├── TabloApiService.kt        # Retrofit interface for Tablo REST API
+│       ├── TabloApiService.kt        # Retrofit interface for the documented Tablo API
 │       ├── TabloApiDto.kt            # Moshi data transfer objects
-│       ├── TabloApiClient.kt         # Client helper utilities
-│       └── TabloDiscoveryManager.kt  # mDNS, cloud association, & demo feeds
+│       ├── TabloApiMapper.kt         # DTO -> app model mapping
+│       ├── TabloTime.kt              # ISO-8601 parsing for guide times
+│       └── TabloDiscoveryManager.kt  # UDP broadcast & association-server discovery
 ├── model/
-│   ├── TabloChannel.kt               # Channel data model
-│   ├── TabloAiring.kt                # EPG program listing model
-│   ├── TabloDevice.kt                # Tablo DVR hardware model
-│   └── SavedMultiview.kt             # Preset configuration model
+│   └── TabloModels.kt                # TabloDevice, TabloChannel, TabloAiring, presets
 ├── playback/
 │   └── MultiviewPlayerManager.kt     # Multi-instance Media3 player manager
 └── ui/
     ├── TabloTvApp.kt                 # Main app scaffold & top navigation
     ├── TabloViewModel.kt             # Core app state & navigation controller
     ├── components/
-    │   └── TvVideoTile.kt            # TextureView Compose video tile with D-pad focus
-    ├── connect/                      # Device scan & direct IP connection
-    ├── guide/                        # Electronic Program Guide (EPG)
+    │   ├── TvVideoTile.kt            # TextureView Compose video tile with D-pad focus
+    │   ├── TvQuickBar.kt             # Top navigation HUD
+    │   └── TvRemoteKeyboard.kt       # On-screen D-pad keyboard
+    ├── connect/                      # Device scan, direct IP, & disconnect
+    ├── guide/                        # Time-grid Electronic Program Guide (EPG)
     ├── multiview/                    # 4-stream grid & full-screen view
     ├── saved/                        # Saved multiview presets screen
-    ├── search/                       # Channel & show search
+    ├── search/                       # Client-side search over loaded guide data
     └── theme/                        # Material 3 TV typography, colors, and shapes
 ```
 
@@ -87,7 +89,7 @@ app/src/main/java/com/example/
 ### Prerequisites
 
 - Android Studio Koala / Ladybug or newer
-- Android SDK 35 (compileSdk 35, minSdk 26)
+- Android SDK 36 (compileSdk 36, minSdk 24)
 - Java 17+
 
 ### Building the Project

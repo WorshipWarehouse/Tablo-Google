@@ -22,20 +22,16 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.example.model.TabloChannel
 
 @OptIn(UnstableApi::class)
-class MultiviewPlayerManager(private val context: Context) {
+class MultiviewPlayerManager(
+    private val context: Context,
+    private val onPlayerError: (Int, String) -> Unit
+) {
     private val maxStreams = 4
     private val players = mutableMapOf<Int, ExoPlayer>()
     private val currentUrls = mutableMapOf<Int, String>()
     private val retryCounts = mutableMapOf<Int, Int>()
     private val handler = Handler(Looper.getMainLooper())
     private var focusedTileIndex = 0
-
-    // Reliable fallback stream
-    private val fallbackStreamUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
-
-    init {
-        // Players are initialized lazily on-demand when assigned channels
-    }
 
     fun getPlayer(tileIndex: Int): ExoPlayer {
         return getOrCreatePlayer(tileIndex)
@@ -104,7 +100,11 @@ class MultiviewPlayerManager(private val context: Context) {
                             "MultiviewPlayer",
                             "Playback error on tile $tileIndex (attempt $currentRetry): ${error.errorCodeName} - ${error.message}"
                         )
-                        val activeUrl = currentUrls[tileIndex] ?: fallbackStreamUrl
+                        val activeUrl = currentUrls[tileIndex]
+                        if (activeUrl == null) {
+                            onPlayerError(tileIndex, error.message ?: "Stream error")
+                            return
+                        }
                         if (currentRetry < 2) {
                             retryCounts[tileIndex] = currentRetry + 1
                             handler.postDelayed({
@@ -116,12 +116,8 @@ class MultiviewPlayerManager(private val context: Context) {
                                 }
                             }, 1500L)
                         } else {
-                            Log.e("MultiviewPlayer", "Tile $tileIndex exceeded max retries. Switching to fallback stream.")
-                            currentUrls[tileIndex] = fallbackStreamUrl
-                            stop()
-                            setMediaItem(MediaItem.fromUri(fallbackStreamUrl))
-                            prepare()
-                            play()
+                            Log.e("MultiviewPlayer", "Tile $tileIndex exceeded max retries")
+                            onPlayerError(tileIndex, error.message ?: "Unable to play stream")
                         }
                     }
                 })
