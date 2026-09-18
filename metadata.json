@@ -1,0 +1,6 @@
+{
+  "name": "Tablo TV",
+  "description": "Native Amazon Fire TV and Android TV Tablo live-TV client with YouTube TV-inspired multiview, EPG guide, search, and saved multiviews.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
