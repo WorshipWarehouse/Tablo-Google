@@ -100,3 +100,13 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+val copyDebugApkToOutputs = tasks.register<Copy>("copyDebugApkToOutputs") {
+  from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+  into(rootProject.layout.projectDirectory.dir("outputs"))
+  rename { "tablo-multiview-debug.apk" }
+}
+
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+  finalizedBy(copyDebugApkToOutputs)
+}

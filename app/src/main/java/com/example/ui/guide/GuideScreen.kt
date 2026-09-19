@@ -82,6 +82,7 @@ fun GuideScreen(
     onWatchChannel: (TabloChannel) -> Unit,
     onAssignToTile: (TabloChannel, Int) -> Unit,
     onBack: () -> Unit,
+    onRequestTopNav: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val windowStart = GuideTiming.windowStartMs()
@@ -128,8 +129,11 @@ fun GuideScreen(
                         if (selectedChannelIndex > 0) {
                             selectedChannelIndex--
                             scope.launch { listState.animateScrollToItem(selectedChannelIndex) }
+                            true
+                        } else {
+                            onRequestTopNav()
+                            true
                         }
-                        true
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN -> {
                         if (channels.isNotEmpty() && selectedChannelIndex < channels.size - 1) {

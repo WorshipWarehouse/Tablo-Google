@@ -74,6 +74,7 @@ fun SavedMultiviewsScreen(
     onRenameMultiview: (Long, String) -> Unit,
     onDeleteMultiview: (Long) -> Unit,
     onBack: () -> Unit,
+    onRequestTopNav: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -86,11 +87,18 @@ fun SavedMultiviewsScreen(
             .background(TvBackground)
             .padding(horizontal = 28.dp, vertical = 20.dp)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK
-                ) {
-                    onBack()
-                    true
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_BACK -> {
+                            onBack()
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> {
+                            onRequestTopNav()
+                            true
+                        }
+                        else -> false
+                    }
                 } else false
             }
     ) {

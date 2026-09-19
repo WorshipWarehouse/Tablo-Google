@@ -7,7 +7,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -16,6 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.model.MultiviewLayoutType
 import com.example.ui.components.TvQuickBar
@@ -48,6 +52,17 @@ fun TabloTvApp(
 
     var showQuickSaveDialog by remember { mutableStateOf(false) }
 
+    val navFocusRequesters = remember {
+        mapOf(
+            TvScreenSection.MULTIVIEW to FocusRequester(),
+            TvScreenSection.GUIDE to FocusRequester(),
+            TvScreenSection.SEARCH to FocusRequester(),
+            TvScreenSection.SAVED to FocusRequester(),
+            TvScreenSection.TABLO to FocusRequester()
+        )
+    }
+    val contentFocusRequester = remember { FocusRequester() }
+
     fun handleSectionSelect(section: TvScreenSection) {
         if (tabloDevice == null && section != TvScreenSection.TABLO) {
             viewModel.setSection(TvScreenSection.TABLO)
@@ -61,99 +76,152 @@ fun TabloTvApp(
             .fillMaxSize()
             .background(TvBackground)
     ) {
-        // Main Screen Section
-        AnimatedContent(
-            targetState = currentSection,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
-            },
-            label = "ScreenTransition",
-            modifier = Modifier.fillMaxSize()
-        ) { section ->
-            when (section) {
-                TvScreenSection.MULTIVIEW -> {
-                    MultiviewScreen(
-                        channels = activeChannels,
-                        airings = airings,
-                        playerManager = viewModel.playerManager,
-                        layoutType = currentLayout,
-                        focusedTileIndex = focusedTileIndex,
-                        onFocusChanged = { viewModel.setFocusedTile(it) },
-                        onSelectSolo = { viewModel.enterSolo(it) },
-                        onBackFromSolo = { viewModel.exitSolo() },
-                        onRequestQuickBar = { viewModel.showQuickBar() },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+        if (currentSection == TvScreenSection.MULTIVIEW) {
+            // Multiview: Full Screen Video Surface with focused D-pad control
+            MultiviewScreen(
+                channels = activeChannels,
+                airings = airings,
+                playerManager = viewModel.playerManager,
+                layoutType = currentLayout,
+                focusedTileIndex = focusedTileIndex,
+                onFocusChanged = { viewModel.setFocusedTile(it) },
+                onSelectSolo = { viewModel.enterSolo(it) },
+                onBackFromSolo = { viewModel.exitSolo() },
+                onRequestQuickBar = { fromLeft ->
+                    viewModel.showQuickBar()
+                    val target = if (fromLeft) TvScreenSection.MULTIVIEW else TvScreenSection.SEARCH
+                    navFocusRequesters[target]?.requestFocus()
+                },
+                modifier = Modifier.fillMaxSize(),
+                focusRequester = contentFocusRequester
+            )
 
-                TvScreenSection.GUIDE -> {
-                    GuideScreen(
-                        channels = channels,
-                        airings = airings,
-                        onWatchChannel = { viewModel.tuneChannelFullscreen(it) },
-                        onAssignToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
-                        onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+            // Overlaid TV Quick Bar (HUD slides down from top over video)
+            TvQuickBar(
+                currentSection = currentSection,
+                currentLayout = currentLayout,
+                tabloDevice = tabloDevice,
+                visible = isQuickBarVisible,
+                onSelectSection = { handleSectionSelect(it) },
+                onSelectLayout = { viewModel.setLayout(it) },
+                onSaveCurrentMultiview = { showQuickSaveDialog = true },
+                navFocusRequesters = navFocusRequesters,
+                onNavigateDown = { fromSection ->
+                    viewModel.hideQuickBar()
+                    val targetTile = when (fromSection) {
+                        TvScreenSection.MULTIVIEW, TvScreenSection.GUIDE -> 0
+                        else -> 1
+                    }
+                    viewModel.setFocusedTile(targetTile)
+                    contentFocusRequester.requestFocus()
+                },
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        } else {
+            // Dedicated Screens (Guide, Search, Saved, Tablo): Permanent Top Nav Bar + Body
+            Column(modifier = Modifier.fillMaxSize()) {
+                TvQuickBar(
+                    currentSection = currentSection,
+                    currentLayout = currentLayout,
+                    tabloDevice = tabloDevice,
+                    visible = true,
+                    onSelectSection = { handleSectionSelect(it) },
+                    onSelectLayout = { viewModel.setLayout(it) },
+                    onSaveCurrentMultiview = { showQuickSaveDialog = true },
+                    navFocusRequesters = navFocusRequesters,
+                    onNavigateDown = {
+                        contentFocusRequester.requestFocus()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-                TvScreenSection.SEARCH -> {
-                    SearchScreen(
-                        channels = channels,
-                        airings = airings,
-                        onSelectChannel = { viewModel.tuneChannelFullscreen(it) },
-                        onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                TvScreenSection.SAVED -> {
-                    SavedMultiviewsScreen(
-                        savedItems = savedMultiviews,
-                        currentChannels = activeChannels,
-                        currentLayout = currentLayout,
-                        onLoadMultiview = { viewModel.loadSavedMultiview(it) },
-                        onSaveNewMultiview = { name, _, _ -> viewModel.saveCurrentMultiview(name) },
-                        onRenameMultiview = { id, name -> viewModel.renameSavedMultiview(id, name) },
-                        onDeleteMultiview = { id -> viewModel.deleteSavedMultiview(id) },
-                        onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                TvScreenSection.TABLO -> {
-                    TabloConnectionScreen(
-                        currentDevice = tabloDevice,
-                        discoveredDevices = discoveredDevices,
-                        isScanning = isScanning,
-                        isConnecting = isConnecting,
-                        connectionError = connectionError,
-                        onStartScan = { viewModel.startDiscovery() },
-                        onSelectDevice = { viewModel.selectDevice(it) },
-                        onManualConnect = { viewModel.connectDirectIp(it) },
-                        onDisconnect = { viewModel.disconnect() },
-                        onBack = {
-                            if (tabloDevice != null) {
-                                viewModel.setSection(TvScreenSection.MULTIVIEW)
-                            }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    AnimatedContent(
+                        targetState = currentSection,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
                         },
+                        label = "ScreenTransition",
                         modifier = Modifier.fillMaxSize()
-                    )
+                    ) { section ->
+                        when (section) {
+                            TvScreenSection.GUIDE -> {
+                                GuideScreen(
+                                    channels = channels,
+                                    airings = airings,
+                                    onWatchChannel = { viewModel.tuneChannelFullscreen(it) },
+                                    onAssignToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
+                                    onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
+                                    onRequestTopNav = {
+                                        navFocusRequesters[TvScreenSection.GUIDE]?.requestFocus()
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            TvScreenSection.SEARCH -> {
+                                SearchScreen(
+                                    channels = channels,
+                                    airings = airings,
+                                    onSelectChannel = { viewModel.tuneChannelFullscreen(it) },
+                                    onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
+                                    onRequestTopNav = {
+                                        navFocusRequesters[TvScreenSection.SEARCH]?.requestFocus()
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            TvScreenSection.SAVED -> {
+                                SavedMultiviewsScreen(
+                                    savedItems = savedMultiviews,
+                                    currentChannels = activeChannels,
+                                    currentLayout = currentLayout,
+                                    onLoadMultiview = { viewModel.loadSavedMultiview(it) },
+                                    onSaveNewMultiview = { name, _, _ -> viewModel.saveCurrentMultiview(name) },
+                                    onRenameMultiview = { id, name -> viewModel.renameSavedMultiview(id, name) },
+                                    onDeleteMultiview = { id -> viewModel.deleteSavedMultiview(id) },
+                                    onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
+                                    onRequestTopNav = {
+                                        navFocusRequesters[TvScreenSection.SAVED]?.requestFocus()
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            TvScreenSection.TABLO -> {
+                                TabloConnectionScreen(
+                                    currentDevice = tabloDevice,
+                                    discoveredDevices = discoveredDevices,
+                                    isScanning = isScanning,
+                                    isConnecting = isConnecting,
+                                    connectionError = connectionError,
+                                    onStartScan = { viewModel.startDiscovery() },
+                                    onSelectDevice = { viewModel.selectDevice(it) },
+                                    onManualConnect = { viewModel.connectDirectIp(it) },
+                                    onDisconnect = { viewModel.disconnect() },
+                                    onBack = {
+                                        if (tabloDevice != null) {
+                                            viewModel.setSection(TvScreenSection.MULTIVIEW)
+                                        }
+                                    },
+                                    onRequestTopNav = {
+                                        navFocusRequesters[TvScreenSection.TABLO]?.requestFocus()
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            TvScreenSection.MULTIVIEW -> {}
+                        }
+                    }
                 }
             }
         }
-
-        // Top Quick Bar HUD (Always present at top layer, auto-hides or stays open during navigation)
-        TvQuickBar(
-            currentSection = currentSection,
-            currentLayout = currentLayout,
-            tabloDevice = tabloDevice,
-            visible = isQuickBarVisible || currentSection != TvScreenSection.MULTIVIEW,
-            onSelectSection = { handleSectionSelect(it) },
-            onSelectLayout = { viewModel.setLayout(it) },
-            onSaveCurrentMultiview = { showQuickSaveDialog = true },
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
 
         // Quick Save Multiview Modal
         if (showQuickSaveDialog) {

@@ -63,6 +63,7 @@ fun SearchScreen(
     airings: List<TabloAiring>,
     onSelectChannel: (TabloChannel) -> Unit,
     onBack: () -> Unit,
+    onRequestTopNav: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -114,11 +115,18 @@ fun SearchScreen(
             .background(TvBackground)
             .padding(horizontal = 28.dp, vertical = 18.dp)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK
-                ) {
-                    onBack()
-                    true
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_BACK -> {
+                            onBack()
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> {
+                            onRequestTopNav()
+                            true
+                        }
+                        else -> false
+                    }
                 } else false
             }
     ) {

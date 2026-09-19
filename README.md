@@ -92,40 +92,58 @@ app/src/main/java/com/example/
 - Android SDK 36 (compileSdk 36, minSdk 24)
 - Java 17+
 
-### Building the Project
+### Building the Project & Persistent APK Output
 
-1. Open the project in Android Studio or use the Gradle wrapper:
+1. Build the debug APK using Gradle:
    ```bash
-   gradle :app:assembleDebug
+   gradle assembleDebug
    ```
+   The build automatically executes `copyDebugApkToOutputs`, placing the ready-to-sideload APK at:
+   ```text
+   outputs/tablo-multiview-debug.apk
+   ```
+
 2. Run unit and Robolectric tests:
    ```bash
    gradle :app:testDebugUnitTest
    ```
 
-### Deploying to Android TV / Fire TV
+### Deploying & Sideloading via ADB (Android TV / Fire TV)
 
-1. Enable **Developer Options** and **ADB Debugging** on your Android TV or Amazon Fire TV device.
-2. Connect via ADB:
+1. Enable **Developer Options** and **ADB Debugging** on your Fire TV or Android TV device:
+   - **Fire TV**: *Settings > My Fire TV > Developer Options > ADB Debugging (ON)*
+   - **Android TV / Google TV**: *Settings > Device Preferences > About > click 'Build' 7 times*, then *Settings > Device Preferences > Developer Options > USB Debugging (ON)*
+2. Connect to your TV over your local network:
    ```bash
-   adb connect <device-ip-address>:5555
+   adb connect <tv-ip-address>:5555
    ```
-3. Install and run:
+3. Install the persistent output APK directly:
    ```bash
-   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   adb install -r outputs/tablo-multiview-debug.apk
+   ```
+4. Launch the application immediately via ADB:
+   ```bash
+   adb shell am start -n com.example/.MainActivity
    ```
 
 ---
 
-## Remote Control Navigation
+## TV D-Pad Remote Navigation Model
 
-| Action | Fire TV / Android TV Remote |
-| :--- | :--- |
-| **Move Focus** | D-pad Up / Down / Left / Right |
-| **Select / Focus Audio** | D-pad Center (OK / Select) |
-| **Full-Screen Video** | Press OK on active multiview tile or click Expand |
-| **Return to Grid** | Back button |
-| **Channel Quick Switch** | D-pad while in Multiview or Guide |
+The application features a 10-foot TV navigation hierarchy optimized for Fire TV and Android TV remotes:
+
+| Context / Screen | Direction / Action | Behavior |
+| :--- | :--- | :--- |
+| **Multiview Grid** | **D-pad UP** | Moves focus up from top video tiles into the TV navigation bar (`TvQuickBar`) |
+| **Multiview Grid** | **D-pad DOWN / LEFT / RIGHT** | Moves focus and active audio between multiview tiles |
+| **Multiview Grid** | **D-pad CENTER (OK)** | Enters full-screen single-channel view (Solo mode) |
+| **Multiview Grid** | **BACK Button** | Returns from Solo mode to 2x2 grid, or opens top navigation bar |
+| **Top Navigation Bar** | **D-pad LEFT / RIGHT** | Slides focus across navigation pills (`MULTIVIEW`, `GUIDE`, `SEARCH`, `SAVED`, `TABLO`) |
+| **Top Navigation Bar** | **D-pad DOWN** | Returns focus directly back to the active video tile or screen content |
+| **Top Navigation Bar** | **D-pad CENTER (OK)** | Activates selected section or toggles multiview layout presets |
+| **Guide Screen** | **D-pad UP on top channel** | Returns focus up to the top navigation bar |
+| **Guide Screen** | **D-pad CENTER (OK)** | Opens program details with options to Watch Live or Assign to Multiview Tile |
+| **Search Screen** | **On-Screen Keyboard** | Remote-friendly keyboard with quick category filters (Sports, Movies, Series, All) |
 
 ---
 

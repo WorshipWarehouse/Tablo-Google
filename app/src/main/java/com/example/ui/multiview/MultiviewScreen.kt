@@ -35,6 +35,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.font.FontWeight
@@ -64,8 +66,9 @@ fun MultiviewScreen(
     onFocusChanged: (Int) -> Unit,
     onSelectSolo: (Int) -> Unit,
     onBackFromSolo: () -> Unit,
-    onRequestQuickBar: () -> Unit,
-    modifier: Modifier = Modifier
+    onRequestQuickBar: (fromLeft: Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
     var showTileInfo by remember { mutableStateOf(true) }
@@ -78,7 +81,7 @@ fun MultiviewScreen(
     }
 
     // Explicit D-pad navigation interceptor for Fire TV Remote
-    val dpadModifier = Modifier
+    var baseDpadModifier = Modifier
         .fillMaxSize()
         .focusable()
         .onKeyEvent { keyEvent ->
@@ -96,7 +99,7 @@ fun MultiviewScreen(
                             onBackFromSolo()
                             true
                         } else {
-                            onRequestQuickBar()
+                            onRequestQuickBar(focusedTileIndex == 0)
                             true
                         }
                     }
@@ -110,22 +113,26 @@ fun MultiviewScreen(
                                     onFocusChanged(1)
                                     true
                                 } else {
-                                    // At top row, pressing UP brings up the TV navigation bar
-                                    onRequestQuickBar()
+                                    // At top row (Tile 0 or Tile 1), pressing UP moves focus to the navigation above the video player
+                                    onRequestQuickBar(focusedTileIndex == 0)
                                     true
                                 }
                             }
                             MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
-                                if (focusedTileIndex > 1) {
+                                if (focusedTileIndex in 2..3) {
                                     onFocusChanged(focusedTileIndex - 1)
                                     true
                                 } else {
-                                    onRequestQuickBar()
+                                    onRequestQuickBar(focusedTileIndex == 0)
                                     true
                                 }
                             }
-                            MultiviewLayoutType.HORIZONTAL_2_UP, MultiviewLayoutType.SOLO -> {
-                                onRequestQuickBar()
+                            MultiviewLayoutType.HORIZONTAL_2_UP -> {
+                                onRequestQuickBar(focusedTileIndex == 0)
+                                true
+                            }
+                            MultiviewLayoutType.SOLO -> {
+                                onRequestQuickBar(true)
                                 true
                             }
                         }
@@ -205,7 +212,7 @@ fun MultiviewScreen(
                         }
                     }
                     KeyEvent.KEYCODE_MENU -> {
-                        onRequestQuickBar()
+                        onRequestQuickBar(focusedTileIndex == 0)
                         true
                     }
                     else -> false
@@ -213,11 +220,15 @@ fun MultiviewScreen(
             } else false
         }
 
+    if (focusRequester != null) {
+        baseDpadModifier = baseDpadModifier.focusRequester(focusRequester)
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(TvBackground)
-            .then(dpadModifier)
+            .then(baseDpadModifier)
     ) {
         when (layoutType) {
             MultiviewLayoutType.GRID_2X2 -> {

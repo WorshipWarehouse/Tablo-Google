@@ -45,11 +45,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.view.KeyEvent
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onKeyEvent
 import com.example.model.MultiviewLayoutType
 import com.example.model.TabloDevice
 import com.example.ui.theme.LiveRed
 import com.example.ui.theme.PillBackground
 import com.example.ui.theme.TabloTeal
+import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.TvFocusHighlight
@@ -59,7 +64,19 @@ enum class TvScreenSection(val label: String, val icon: ImageVector) {
     GUIDE("TV Guide", Icons.Default.LiveTv),
     SEARCH("Search", Icons.Default.Search),
     SAVED("Saved", Icons.Default.Bookmark),
-    TABLO("Tablo", Icons.Default.Router)
+    TABLO("Tablo", Icons.Default.Router);
+
+    fun previous(): TvScreenSection? {
+        val all = values()
+        val idx = all.indexOf(this)
+        return if (idx > 0) all[idx - 1] else null
+    }
+
+    fun next(): TvScreenSection? {
+        val all = values()
+        val idx = all.indexOf(this)
+        return if (idx < all.size - 1) all[idx + 1] else null
+    }
 }
 
 @Composable
@@ -71,6 +88,8 @@ fun TvQuickBar(
     onSelectSection: (TvScreenSection) -> Unit,
     onSelectLayout: (MultiviewLayoutType) -> Unit,
     onSaveCurrentMultiview: () -> Unit,
+    navFocusRequesters: Map<TvScreenSection, FocusRequester> = emptyMap(),
+    onNavigateDown: (TvScreenSection) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -128,11 +147,17 @@ fun TvQuickBar(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TvScreenSection.values().forEach { section ->
+                            val prev = section.previous()
+                            val next = section.next()
                             TvNavPill(
                                 label = section.label,
                                 icon = section.icon,
                                 isSelected = currentSection == section,
-                                onClick = { onSelectSection(section) }
+                                onClick = { onSelectSection(section) },
+                                focusRequester = navFocusRequesters[section],
+                                onKeyDown = { onNavigateDown(section) },
+                                onKeyLeft = prev?.let { p -> { navFocusRequesters[p]?.requestFocus() } },
+                                onKeyRight = next?.let { n -> { navFocusRequesters[n]?.requestFocus() } }
                             )
                         }
                     }
@@ -208,7 +233,8 @@ fun TvQuickBar(
                                 TvLayoutPill(
                                     layout = layout,
                                     isSelected = currentLayout == layout,
-                                    onClick = { onSelectLayout(layout) }
+                                    onClick = { onSelectLayout(layout) },
+                                    onKeyDown = { onNavigateDown(TvScreenSection.MULTIVIEW) }
                                 )
                             }
                         }
@@ -218,7 +244,8 @@ fun TvQuickBar(
                             label = "Save Current Multiview",
                             icon = Icons.Default.Bookmark,
                             isSelected = false,
-                            onClick = onSaveCurrentMultiview
+                            onClick = onSaveCurrentMultiview,
+                            onKeyDown = { onNavigateDown(TvScreenSection.MULTIVIEW) }
                         )
                     }
                 }
@@ -232,7 +259,12 @@ fun TvNavPill(
     label: String,
     icon: ImageVector,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
+    onKeyDown: () -> Unit = {},
+    onKeyLeft: (() -> Unit)? = null,
+    onKeyRight: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -248,20 +280,52 @@ fun TvNavPill(
         else -> TextPrimary
     }
     val border = when {
-        isFocused -> BorderStroke(2.dp, TvFocusHighlight)
+        isFocused -> BorderStroke(2.5.dp, TvFocusHighlight)
         isSelected -> BorderStroke(1.dp, TabloTeal.copy(alpha = 0.6f))
         else -> BorderStroke(1.dp, Color(0x22FFFFFF))
     }
 
+    var baseMod = modifier
+        .clip(RoundedCornerShape(20.dp))
+        .background(background)
+        .border(border, RoundedCornerShape(20.dp))
+        .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+        .onKeyEvent { keyEvent ->
+            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                when (keyEvent.nativeKeyEvent.keyCode) {
+                    android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        onKeyDown()
+                        true
+                    }
+                    android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        if (onKeyLeft != null) {
+                            onKeyLeft()
+                            true
+                        } else false
+                    }
+                    android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (onKeyRight != null) {
+                            onKeyRight()
+                            true
+                        } else false
+                    }
+                    android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
+                        onClick()
+                        true
+                    }
+                    else -> false
+                }
+            } else false
+        }
+        .focusable(interactionSource = interactionSource)
+
+    if (focusRequester != null) {
+        baseMod = baseMod.focusRequester(focusRequester)
+    }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(background)
-            .border(border, RoundedCornerShape(20.dp))
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 14.dp, vertical = 7.dp)
+        modifier = baseMod.padding(horizontal = 14.dp, vertical = 7.dp)
     ) {
         Icon(
             imageVector = icon,
@@ -283,7 +347,9 @@ fun TvNavPill(
 fun TvLayoutPill(
     layout: MultiviewLayoutType,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onKeyDown: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -299,17 +365,32 @@ fun TvLayoutPill(
         else -> TextSecondary
     }
     val border = if (isFocused) {
-        BorderStroke(2.dp, TvFocusHighlight)
+        BorderStroke(2.5.dp, TvFocusHighlight)
     } else {
         BorderStroke(1.dp, if (isSelected) TabloTeal.copy(alpha = 0.5f) else Color(0x22FFFFFF))
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .background(background)
             .border(border, RoundedCornerShape(6.dp))
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                            onKeyDown()
+                            true
+                        }
+                        android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
+                            onClick()
+                            true
+                        }
+                        else -> false
+                    }
+                } else false
+            }
             .focusable(interactionSource = interactionSource)
             .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {

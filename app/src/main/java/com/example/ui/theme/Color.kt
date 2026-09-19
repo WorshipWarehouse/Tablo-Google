@@ -8,8 +8,8 @@ val TvSurface = Color(0xFF131A26)
 val TvSurfaceElevated = Color(0xFF1D2636)
 val TvBorder = Color(0xFF2E3A4E)
 
-// Active Audio Subtle Border (YouTube TV inspired)
-val ActiveAudioBorderColor = Color(0xFFE2E8F0)
+// Active Audio Subtle Border (Subtle slate gray, non-intrusive)
+val ActiveAudioBorderColor = Color(0xFF8896A6)
 
 // Accent & Brand Colors
 val TabloTeal = Color(0xFF00D2B4)

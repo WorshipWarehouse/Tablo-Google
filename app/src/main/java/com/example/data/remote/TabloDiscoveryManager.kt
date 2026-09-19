@@ -90,7 +90,7 @@ class TabloDiscoveryManager(
         byHost.values.toList()
     }
 
-    private fun verifyServerInfo(host: String): TabloDevice? {
+    private suspend fun verifyServerInfo(host: String): TabloDevice? {
         return try {
             val response = apiService.getServerInfo("http://$host:8885/server/info")
             val model = response.model
@@ -112,7 +112,7 @@ class TabloDiscoveryManager(
         }
     }
 
-    private fun discoverViaUdp(): List<TabloDevice> {
+    private suspend fun discoverViaUdp(): List<TabloDevice> {
         val found = mutableListOf<TabloDevice>()
         val listenSocket = DatagramSocket()
         try {
