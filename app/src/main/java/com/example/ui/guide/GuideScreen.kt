@@ -169,8 +169,21 @@ fun GuideScreen(
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        if (selectedChannel != null && selectedAiring != null) {
-                            programDialog = Pair(selectedChannel, selectedAiring)
+                        if (selectedChannel != null) {
+                            val airingToUse = selectedAiring ?: TabloAiring(
+                                airingId = "live-${selectedChannel.channelId}",
+                                channelId = selectedChannel.channelId,
+                                title = "${selectedChannel.callSign} Live Broadcast",
+                                description = "Live television broadcast on ${selectedChannel.network}.",
+                                startTimeMillis = System.currentTimeMillis()
+                            )
+                            programDialog = Pair(selectedChannel, airingToUse)
+                        }
+                        true
+                    }
+                    KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                        if (selectedChannel != null) {
+                            onWatchChannel(selectedChannel)
                         }
                         true
                     }

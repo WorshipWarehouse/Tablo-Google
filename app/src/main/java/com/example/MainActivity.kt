@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +17,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Robust crash prevention for background socket/ExoPlayer exceptions on Android TV
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e("MainActivity", "Caught uncaught exception on thread ${thread.name}: ${throwable.message}", throwable)
+            if (throwable is OutOfMemoryError) {
+                defaultHandler?.uncaughtException(thread, throwable)
+            }
+        }
 
         // Keep screen awake for uninterrupted TV viewing on Fire TV
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

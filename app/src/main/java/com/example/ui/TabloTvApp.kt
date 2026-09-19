@@ -53,6 +53,7 @@ fun TabloTvApp(
     val loginError by viewModel.loginError.collectAsState()
     val connectionError by viewModel.connectionError.collectAsState()
     val savedMultiviews by viewModel.savedMultiviews.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
 
     var showQuickSaveDialog by remember { mutableStateOf(false) }
 
@@ -97,6 +98,8 @@ fun TabloTvApp(
                     playerManager = viewModel.playerManager,
                     layoutType = currentLayout,
                     focusedTileIndex = focusedTileIndex,
+                    allChannels = channels,
+                    isPlaying = isPlaying,
                     onFocusChanged = { viewModel.setFocusedTile(it) },
                     onSelectSolo = { viewModel.enterSolo(it) },
                     onBackFromSolo = { viewModel.exitSolo() },
@@ -105,6 +108,12 @@ fun TabloTvApp(
                         val target = if (fromLeft) TvScreenSection.MULTIVIEW else TvScreenSection.SEARCH
                         navFocusRequesters[target]?.safeRequest()
                     },
+                    onTogglePlayPause = { viewModel.togglePlayPause() },
+                    onGoToLive = { viewModel.goToLive() },
+                    onOpenGuide = { handleSectionSelect(TvScreenSection.GUIDE) },
+                    onSelectLayout = { viewModel.setLayout(it) },
+                    onAssignChannelToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
+                    onRemoveChannelFromTile = { viewModel.removeChannelFromTile(it) },
                     onNavigateLeftPage = {
                         handleSectionSelect(TvScreenSection.TABLO)
                         navFocusRequesters[TvScreenSection.TABLO]?.safeRequest()

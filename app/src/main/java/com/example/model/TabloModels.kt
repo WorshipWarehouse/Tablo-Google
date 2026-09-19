@@ -3,6 +3,7 @@ package com.example.model
 enum class MultiviewLayoutType(val displayName: String, val maxChannels: Int) {
     GRID_2X2("2x2 Grid", 4),
     PRIMARY_1_PLUS_3("1+3 Primary", 4),
+    PRIMARY_1_PLUS_2("1+2 Primary", 3),
     HORIZONTAL_2_UP("2-Up Split", 2),
     SOLO("Solo / Fullscreen", 1)
 }

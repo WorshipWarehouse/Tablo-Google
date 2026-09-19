@@ -139,4 +139,13 @@ class ExampleRobolectricTest {
     assertEquals("Series", categories[2])
     assertEquals("Program", categories[3])
   }
+
+  @Test
+  fun `multiview layout types have expected slot counts`() {
+    assertEquals(1, com.example.model.MultiviewLayoutType.SOLO.maxChannels)
+    assertEquals(2, com.example.model.MultiviewLayoutType.HORIZONTAL_2_UP.maxChannels)
+    assertEquals(3, com.example.model.MultiviewLayoutType.PRIMARY_1_PLUS_2.maxChannels)
+    assertEquals(4, com.example.model.MultiviewLayoutType.PRIMARY_1_PLUS_3.maxChannels)
+    assertEquals(4, com.example.model.MultiviewLayoutType.GRID_2X2.maxChannels)
+  }
 }

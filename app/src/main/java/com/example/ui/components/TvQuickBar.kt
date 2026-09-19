@@ -245,10 +245,11 @@ fun TvQuickBar(
                                 modifier = Modifier.padding(end = 4.dp)
                             )
                             listOf(
-                                MultiviewLayoutType.GRID_2X2,
-                                MultiviewLayoutType.PRIMARY_1_PLUS_3,
+                                MultiviewLayoutType.SOLO,
                                 MultiviewLayoutType.HORIZONTAL_2_UP,
-                                MultiviewLayoutType.SOLO
+                                MultiviewLayoutType.PRIMARY_1_PLUS_2,
+                                MultiviewLayoutType.PRIMARY_1_PLUS_3,
+                                MultiviewLayoutType.GRID_2X2
                             ).forEach { layout ->
                                 TvLayoutPill(
                                     layout = layout,

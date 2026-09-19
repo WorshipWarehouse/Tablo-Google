@@ -98,6 +98,9 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
     private val _tileErrors = MutableStateFlow<Map<Int, String>>(emptyMap())
     val tileErrors: StateFlow<Map<Int, String>> = _tileErrors.asStateFlow()
 
+    private val _isPlaying = MutableStateFlow(true)
+    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+
     private var autoHideJob: Job? = null
     private var lastManualIp: String? = null
     private var dataLoadJob: Job? = null
@@ -107,15 +110,15 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
             val savedDevice = deviceRepository.load()
             if (savedDevice != null) {
                 _tabloDevice.value = savedDevice
-                _currentSection.value = TvScreenSection.MULTIVIEW
-                loadDataAndTune(savedDevice)
+                _currentSection.value = TvScreenSection.GUIDE
+                loadChannelsAndGuide(savedDevice)
             } else {
                 _currentSection.value = TvScreenSection.TABLO
             }
         }
     }
 
-    private fun loadDataAndTune(device: TabloDevice) {
+    private fun loadChannelsAndGuide(device: TabloDevice) {
         dataLoadJob?.cancel()
         dataLoadJob = viewModelScope.launch {
             _isLoadingChannels.value = true
@@ -144,13 +147,10 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         }
 
-                        val top = result.data.take(4)
-                        val slots = List(4) { index -> top.getOrNull(index) }
-                        _activeMultiviewChannels.value = slots
-                        top.forEachIndexed { index, channel ->
-                            playChannelInTile(channel, index)
-                        }
-                        playerManager.setAudioTile(0)
+                        // Requirement: Do not fill in the multiview by default.
+                        // Multiview starts empty; user picks initial channel in TV Guide.
+                        _activeMultiviewChannels.value = emptyTileSlots()
+                        _currentLayout.value = MultiviewLayoutType.SOLO
 
                         loadGuide(device, result.data)
                     }
@@ -282,16 +282,78 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun tuneChannelFullscreen(channel: TabloChannel) {
-        val index = _focusedTileIndex.value
-        playChannelInTile(channel, index)
-        enterSolo(index)
+        val targetIndex = 0
+        // Free decoders and resources on other tiles
+        for (i in 0 until 4) {
+            if (i != targetIndex) {
+                playerManager.stopTile(i)
+            }
+        }
+        val slots = emptyTileSlots().toMutableList()
+        slots[targetIndex] = channel
+        _activeMultiviewChannels.value = slots
+        _focusedTileIndex.value = targetIndex
+        _currentLayout.value = MultiviewLayoutType.SOLO
+        playChannelInTile(channel, targetIndex)
+        playerManager.setAudioTile(targetIndex)
+        _isPlaying.value = true
         _currentSection.value = TvScreenSection.MULTIVIEW
     }
 
     fun assignChannelToTile(channel: TabloChannel, tileIndex: Int) {
-        playChannelInTile(channel, tileIndex)
-        setFocusedTile(tileIndex)
+        val idx = tileIndex.coerceIn(0, 3)
+        playChannelInTile(channel, idx)
+        setFocusedTile(idx)
+        if (_currentLayout.value == MultiviewLayoutType.SOLO) {
+            _currentLayout.value = MultiviewLayoutType.HORIZONTAL_2_UP
+        }
+        _isPlaying.value = true
         _currentSection.value = TvScreenSection.MULTIVIEW
+    }
+
+    fun removeChannelFromTile(tileIndex: Int) {
+        if (tileIndex in 0..3) {
+            val slots = _activeMultiviewChannels.value.toMutableList()
+            if (tileIndex < slots.size) {
+                slots[tileIndex] = null
+                _activeMultiviewChannels.value = slots
+            }
+            playerManager.stopTile(tileIndex)
+            _tileErrors.value = _tileErrors.value - tileIndex
+            val filled = slots.mapIndexedNotNull { index, ch -> if (ch != null) index else null }
+            if (filled.isNotEmpty() && _focusedTileIndex.value == tileIndex) {
+                setFocusedTile(filled.first())
+            }
+        }
+    }
+
+    fun togglePlayPause() {
+        val currentFocus = _focusedTileIndex.value
+        val playing = playerManager.togglePlayPause(currentFocus)
+        _isPlaying.value = playing
+    }
+
+    fun goToLive() {
+        val currentFocus = _focusedTileIndex.value
+        playerManager.goToLive(currentFocus)
+        _isPlaying.value = true
+    }
+
+    fun setMultiviewChannelsCount(count: Int) {
+        when (count) {
+            1 -> {
+                _currentLayout.value = MultiviewLayoutType.SOLO
+            }
+            2 -> {
+                _currentLayout.value = MultiviewLayoutType.HORIZONTAL_2_UP
+            }
+            3 -> {
+                _currentLayout.value = MultiviewLayoutType.PRIMARY_1_PLUS_2
+            }
+            4 -> {
+                _currentLayout.value = MultiviewLayoutType.GRID_2X2
+            }
+        }
     }
 
     fun saveCurrentMultiview(name: String) {
@@ -358,8 +420,8 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
             val connected = device.copy(isConnected = true)
             deviceRepository.save(connected)
             _tabloDevice.value = connected
-            _currentSection.value = TvScreenSection.MULTIVIEW
-            loadDataAndTune(connected)
+            _currentSection.value = TvScreenSection.GUIDE
+            loadChannelsAndGuide(connected)
         }
     }
 
@@ -408,7 +470,7 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
     fun retryConnection() {
         val device = _tabloDevice.value
         if (device != null && device.isConnected) {
-            loadDataAndTune(device)
+            loadChannelsAndGuide(device)
         } else if (!lastManualIp.isNullOrBlank()) {
             connectDirectIp(lastManualIp!!)
         } else {

@@ -77,7 +77,7 @@ class MultiviewPlayerManager(
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .build().apply {
-                repeatMode = Player.REPEAT_MODE_ALL
+                repeatMode = Player.REPEAT_MODE_OFF
                 playWhenReady = true
                 val isFocused = (tileIndex == focusedTileIndex)
                 volume = if (isFocused) 1.0f else 0.0f
@@ -108,11 +108,16 @@ class MultiviewPlayerManager(
                         if (currentRetry < 2) {
                             retryCounts[tileIndex] = currentRetry + 1
                             handler.postDelayed({
-                                if (players[tileIndex] != null) {
-                                    stop()
-                                    setMediaItem(MediaItem.fromUri(activeUrl))
-                                    prepare()
-                                    play()
+                                val p = players[tileIndex]
+                                if (p != null) {
+                                    try {
+                                        p.stop()
+                                        p.setMediaItem(MediaItem.fromUri(activeUrl))
+                                        p.prepare()
+                                        p.play()
+                                    } catch (e: Exception) {
+                                        Log.e("MultiviewPlayer", "Error retrying tile $tileIndex: ${e.message}")
+                                    }
                                 }
                             }, 1500L)
                         } else {
@@ -210,6 +215,53 @@ class MultiviewPlayerManager(
 
     fun resumeAll() {
         players.values.forEach { it.play() }
+    }
+
+    fun stopTile(tileIndex: Int) {
+        try {
+            val player = players[tileIndex]
+            if (player != null) {
+                player.stop()
+                player.clearMediaItems()
+            }
+            currentUrls.remove(tileIndex)
+            retryCounts.remove(tileIndex)
+        } catch (e: Exception) {
+            Log.e("MultiviewPlayer", "Error stopping tile $tileIndex: ${e.message}")
+        }
+    }
+
+    fun togglePlayPause(tileIndex: Int): Boolean {
+        val player = players[tileIndex] ?: return false
+        return if (player.isPlaying) {
+            player.pause()
+            false
+        } else {
+            player.play()
+            true
+        }
+    }
+
+    fun isPlaying(tileIndex: Int): Boolean {
+        return players[tileIndex]?.isPlaying == true
+    }
+
+    fun play(tileIndex: Int) {
+        players[tileIndex]?.play()
+    }
+
+    fun pause(tileIndex: Int) {
+        players[tileIndex]?.pause()
+    }
+
+    fun goToLive(tileIndex: Int) {
+        val player = players[tileIndex] ?: return
+        try {
+            player.seekToDefaultPosition()
+            player.play()
+        } catch (e: Exception) {
+            Log.e("MultiviewPlayer", "Error seeking to live on tile $tileIndex: ${e.message}")
+        }
     }
 
     fun releaseAll() {

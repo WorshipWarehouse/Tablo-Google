@@ -1,11 +1,6 @@
 package com.example.ui.multiview
 
 import android.view.KeyEvent
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,15 +10,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -38,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,9 +41,12 @@ import com.example.model.MultiviewLayoutType
 import com.example.model.TabloAiring
 import com.example.model.TabloChannel
 import com.example.playback.MultiviewPlayerManager
+import com.example.ui.components.TvPlayerControlsOverlay
 import com.example.ui.components.TvVideoTile
 import com.example.ui.theme.TabloTeal
 import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.TvBackground
 import com.example.ui.theme.TvBorder
 import com.example.ui.theme.TvFocusHighlight
@@ -64,10 +61,18 @@ fun MultiviewScreen(
     playerManager: MultiviewPlayerManager,
     layoutType: MultiviewLayoutType,
     focusedTileIndex: Int,
+    allChannels: List<TabloChannel> = emptyList(),
+    isPlaying: Boolean = true,
     onFocusChanged: (Int) -> Unit,
     onSelectSolo: (Int) -> Unit,
     onBackFromSolo: () -> Unit,
     onRequestQuickBar: (fromLeft: Boolean) -> Unit,
+    onTogglePlayPause: () -> Unit = {},
+    onGoToLive: () -> Unit = {},
+    onOpenGuide: () -> Unit = {},
+    onSelectLayout: (MultiviewLayoutType) -> Unit = {},
+    onAssignChannelToTile: (TabloChannel, Int) -> Unit = { _, _ -> },
+    onRemoveChannelFromTile: (Int) -> Unit = {},
     onNavigateLeftPage: () -> Unit = {},
     onNavigateRightPage: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -75,13 +80,25 @@ fun MultiviewScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var showTileInfo by remember { mutableStateOf(true) }
+    var showControlsOverlay by remember { mutableStateOf(false) }
 
-    // Auto-hide lower-third tile info pill after 4 seconds to keep video 100% immersive
+    // Auto-hide lower-third tile info pill after 4 seconds
     LaunchedEffect(focusedTileIndex, layoutType) {
         showTileInfo = true
         delay(4000)
         showTileInfo = false
     }
+
+    // Auto-hide controls overlay after 6 seconds of no interactions
+    LaunchedEffect(showControlsOverlay) {
+        if (showControlsOverlay) {
+            delay(6500)
+            showControlsOverlay = false
+        }
+    }
+
+    val activeChannel = channels.getOrNull(focusedTileIndex)
+    val activeAiring = airings.find { it.channelId == activeChannel?.channelId }
 
     // Explicit D-pad navigation interceptor for Fire TV Remote
     var baseDpadModifier = Modifier
@@ -93,12 +110,25 @@ fun MultiviewScreen(
                 when (keyCode) {
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                         if (layoutType != MultiviewLayoutType.SOLO) {
-                            onSelectSolo(focusedTileIndex)
+                            val slotChannel = channels.getOrNull(focusedTileIndex)
+                            if (slotChannel == null) {
+                                // Empty tile -> open controls/multiview drawer to pick channel
+                                showControlsOverlay = true
+                            } else {
+                                onSelectSolo(focusedTileIndex)
+                            }
                             true
-                        } else false
+                        } else {
+                            // In Solo mode, clicking center toggles or shows player controls
+                            showControlsOverlay = !showControlsOverlay
+                            true
+                        }
                     }
                     KeyEvent.KEYCODE_BACK -> {
-                        if (layoutType == MultiviewLayoutType.SOLO) {
+                        if (showControlsOverlay) {
+                            showControlsOverlay = false
+                            true
+                        } else if (layoutType == MultiviewLayoutType.SOLO) {
                             onBackFromSolo()
                             true
                         } else {
@@ -107,36 +137,49 @@ fun MultiviewScreen(
                         }
                     }
                     KeyEvent.KEYCODE_DPAD_UP -> {
-                        when (layoutType) {
-                            MultiviewLayoutType.GRID_2X2 -> {
-                                if (focusedTileIndex == 2) {
-                                    onFocusChanged(0)
-                                    true
-                                } else if (focusedTileIndex == 3) {
-                                    onFocusChanged(1)
-                                    true
-                                } else {
-                                    // At top row (Tile 0 or Tile 1), pressing UP moves focus to the navigation above the video player
+                        if (showControlsOverlay) {
+                            showControlsOverlay = false
+                            true
+                        } else {
+                            when (layoutType) {
+                                MultiviewLayoutType.GRID_2X2 -> {
+                                    if (focusedTileIndex == 2) {
+                                        onFocusChanged(0)
+                                        true
+                                    } else if (focusedTileIndex == 3) {
+                                        onFocusChanged(1)
+                                        true
+                                    } else {
+                                        onRequestQuickBar(focusedTileIndex == 0)
+                                        true
+                                    }
+                                }
+                                MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
+                                    if (focusedTileIndex in 2..3) {
+                                        onFocusChanged(focusedTileIndex - 1)
+                                        true
+                                    } else {
+                                        onRequestQuickBar(focusedTileIndex == 0)
+                                        true
+                                    }
+                                }
+                                MultiviewLayoutType.PRIMARY_1_PLUS_2 -> {
+                                    if (focusedTileIndex == 2) {
+                                        onFocusChanged(1)
+                                        true
+                                    } else {
+                                        onRequestQuickBar(focusedTileIndex == 0)
+                                        true
+                                    }
+                                }
+                                MultiviewLayoutType.HORIZONTAL_2_UP -> {
                                     onRequestQuickBar(focusedTileIndex == 0)
                                     true
                                 }
-                            }
-                            MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
-                                if (focusedTileIndex in 2..3) {
-                                    onFocusChanged(focusedTileIndex - 1)
-                                    true
-                                } else {
-                                    onRequestQuickBar(focusedTileIndex == 0)
+                                MultiviewLayoutType.SOLO -> {
+                                    onRequestQuickBar(true)
                                     true
                                 }
-                            }
-                            MultiviewLayoutType.HORIZONTAL_2_UP -> {
-                                onRequestQuickBar(focusedTileIndex == 0)
-                                true
-                            }
-                            MultiviewLayoutType.SOLO -> {
-                                onRequestQuickBar(true)
-                                true
                             }
                         }
                     }
@@ -149,15 +192,33 @@ fun MultiviewScreen(
                                 } else if (focusedTileIndex == 1) {
                                     onFocusChanged(3)
                                     true
-                                } else false
+                                } else {
+                                    showControlsOverlay = true
+                                    true
+                                }
                             }
                             MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
                                 if (focusedTileIndex in 1..2) {
                                     onFocusChanged(focusedTileIndex + 1)
                                     true
-                                } else false
+                                } else {
+                                    showControlsOverlay = true
+                                    true
+                                }
                             }
-                            else -> false
+                            MultiviewLayoutType.PRIMARY_1_PLUS_2 -> {
+                                if (focusedTileIndex == 1) {
+                                    onFocusChanged(2)
+                                    true
+                                } else {
+                                    showControlsOverlay = true
+                                    true
+                                }
+                            }
+                            MultiviewLayoutType.HORIZONTAL_2_UP, MultiviewLayoutType.SOLO -> {
+                                showControlsOverlay = true
+                                true
+                            }
                         }
                     }
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
@@ -176,7 +237,15 @@ fun MultiviewScreen(
                             }
                             MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
                                 if (focusedTileIndex > 0) {
-                                    // Move back to Primary large tile
+                                    onFocusChanged(0)
+                                    true
+                                } else {
+                                    onNavigateLeftPage()
+                                    true
+                                }
+                            }
+                            MultiviewLayoutType.PRIMARY_1_PLUS_2 -> {
+                                if (focusedTileIndex > 0) {
                                     onFocusChanged(0)
                                     true
                                 } else {
@@ -215,7 +284,15 @@ fun MultiviewScreen(
                             }
                             MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
                                 if (focusedTileIndex == 0) {
-                                    // Move from large primary to first small tile
+                                    onFocusChanged(1)
+                                    true
+                                } else {
+                                    onNavigateRightPage()
+                                    true
+                                }
+                            }
+                            MultiviewLayoutType.PRIMARY_1_PLUS_2 -> {
+                                if (focusedTileIndex == 0) {
                                     onFocusChanged(1)
                                     true
                                 } else {
@@ -239,7 +316,11 @@ fun MultiviewScreen(
                         }
                     }
                     KeyEvent.KEYCODE_MENU -> {
-                        onRequestQuickBar(focusedTileIndex == 0)
+                        showControlsOverlay = !showControlsOverlay
+                        true
+                    }
+                    KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                        onTogglePlayPause()
                         true
                     }
                     else -> false
@@ -261,7 +342,6 @@ fun MultiviewScreen(
             MultiviewLayoutType.GRID_2X2 -> {
                 // 2x2 Grid (4 channels)
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // Top Row: Tile 0, Tile 1
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -276,6 +356,10 @@ fun MultiviewScreen(
                                 isFocused = focusedTileIndex == 0,
                                 onFocus = { onFocusChanged(0) },
                                 onSelect = { onSelectSolo(0) },
+                                onEmptyClick = {
+                                    onFocusChanged(0)
+                                    showControlsOverlay = true
+                                },
                                 showInfo = showTileInfo
                             )
                         }
@@ -288,11 +372,14 @@ fun MultiviewScreen(
                                 isFocused = focusedTileIndex == 1,
                                 onFocus = { onFocusChanged(1) },
                                 onSelect = { onSelectSolo(1) },
+                                onEmptyClick = {
+                                    onFocusChanged(1)
+                                    showControlsOverlay = true
+                                },
                                 showInfo = showTileInfo
                             )
                         }
                     }
-                    // Bottom Row: Tile 2, Tile 3
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -307,6 +394,10 @@ fun MultiviewScreen(
                                 isFocused = focusedTileIndex == 2,
                                 onFocus = { onFocusChanged(2) },
                                 onSelect = { onSelectSolo(2) },
+                                onEmptyClick = {
+                                    onFocusChanged(2)
+                                    showControlsOverlay = true
+                                },
                                 showInfo = showTileInfo
                             )
                         }
@@ -319,6 +410,10 @@ fun MultiviewScreen(
                                 isFocused = focusedTileIndex == 3,
                                 onFocus = { onFocusChanged(3) },
                                 onSelect = { onSelectSolo(3) },
+                                onEmptyClick = {
+                                    onFocusChanged(3)
+                                    showControlsOverlay = true
+                                },
                                 showInfo = showTileInfo
                             )
                         }
@@ -328,14 +423,10 @@ fun MultiviewScreen(
 
             MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
                 // 1+3 Primary Layout:
-                // CRITICAL REQUIREMENT: THE ACTIVE AUDIO STREAM MUST BE THE LARGE PRIMARY STREAM.
-                // The focused tile index IS the large tile on the left.
-                // The other 3 indices occupy the 3 smaller tiles on the right.
-                val primaryIndex = focusedTileIndex
+                val primaryIndex = focusedTileIndex.coerceIn(0, 3)
                 val otherIndices = (0 until 4).filter { it != primaryIndex }
 
                 Row(modifier = Modifier.fillMaxSize()) {
-                    // Large Primary Stream (Left ~68% width)
                     Box(
                         modifier = Modifier
                             .weight(2.4f)
@@ -350,11 +441,14 @@ fun MultiviewScreen(
                             isFocused = true,
                             onFocus = { onFocusChanged(primaryIndex) },
                             onSelect = { onSelectSolo(primaryIndex) },
+                            onEmptyClick = {
+                                onFocusChanged(primaryIndex)
+                                showControlsOverlay = true
+                            },
                             showInfo = showTileInfo
                         )
                     }
 
-                    // 3 Stacked Secondary Streams (Right ~32% width)
                     Column(
                         modifier = Modifier
                             .weight(1.1f)
@@ -373,12 +467,69 @@ fun MultiviewScreen(
                                     airings = airings,
                                     playerManager = playerManager,
                                     isFocused = false,
-                                    onFocus = {
-                                        // When user moves focus to a secondary tile, it immediately becomes the primary large tile!
+                                    onFocus = { onFocusChanged(secondaryIndex) },
+                                    onSelect = { onFocusChanged(secondaryIndex) },
+                                    onEmptyClick = {
                                         onFocusChanged(secondaryIndex)
+                                        showControlsOverlay = true
                                     },
-                                    onSelect = {
+                                    showInfo = showTileInfo
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            MultiviewLayoutType.PRIMARY_1_PLUS_2 -> {
+                // 3 Views (1+2 Primary Layout): 1 large left, 2 stacked right
+                val primaryIndex = 0
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(2.3f)
+                            .fillMaxHeight()
+                            .padding(2.dp)
+                    ) {
+                        RenderTile(
+                            tileIndex = primaryIndex,
+                            channels = channels,
+                            airings = airings,
+                            playerManager = playerManager,
+                            isFocused = focusedTileIndex == primaryIndex,
+                            onFocus = { onFocusChanged(primaryIndex) },
+                            onSelect = { onSelectSolo(primaryIndex) },
+                            onEmptyClick = {
+                                onFocusChanged(primaryIndex)
+                                showControlsOverlay = true
+                            },
+                            showInfo = showTileInfo
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .fillMaxHeight()
+                    ) {
+                        listOf(1, 2).forEach { secondaryIndex ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .padding(2.dp)
+                            ) {
+                                RenderTile(
+                                    tileIndex = secondaryIndex,
+                                    channels = channels,
+                                    airings = airings,
+                                    playerManager = playerManager,
+                                    isFocused = focusedTileIndex == secondaryIndex,
+                                    onFocus = { onFocusChanged(secondaryIndex) },
+                                    onSelect = { onSelectSolo(secondaryIndex) },
+                                    onEmptyClick = {
                                         onFocusChanged(secondaryIndex)
+                                        showControlsOverlay = true
                                     },
                                     showInfo = showTileInfo
                                 )
@@ -400,6 +551,10 @@ fun MultiviewScreen(
                             isFocused = focusedTileIndex == 0,
                             onFocus = { onFocusChanged(0) },
                             onSelect = { onSelectSolo(0) },
+                            onEmptyClick = {
+                                onFocusChanged(0)
+                                showControlsOverlay = true
+                            },
                             showInfo = showTileInfo
                         )
                     }
@@ -412,6 +567,10 @@ fun MultiviewScreen(
                             isFocused = focusedTileIndex == 1,
                             onFocus = { onFocusChanged(1) },
                             onSelect = { onSelectSolo(1) },
+                            onEmptyClick = {
+                                onFocusChanged(1)
+                                showControlsOverlay = true
+                            },
                             showInfo = showTileInfo
                         )
                     }
@@ -428,12 +587,34 @@ fun MultiviewScreen(
                         playerManager = playerManager,
                         isFocused = true,
                         onFocus = { /* already focused */ },
-                        onSelect = { /* already in solo */ },
+                        onSelect = { showControlsOverlay = !showControlsOverlay },
+                        onEmptyClick = { showControlsOverlay = true },
                         showInfo = showTileInfo
                     )
                 }
             }
         }
+
+        // TV Player Controls & Multiview Overlay
+        TvPlayerControlsOverlay(
+            visible = showControlsOverlay,
+            isPlaying = isPlaying,
+            activeChannel = activeChannel,
+            activeAiring = activeAiring,
+            layoutType = layoutType,
+            focusedTileIndex = focusedTileIndex,
+            channels = allChannels,
+            activeMultiviewChannels = channels,
+            onTogglePlayPause = onTogglePlayPause,
+            onGoToLive = onGoToLive,
+            onOpenGuide = onOpenGuide,
+            onSelectLayout = onSelectLayout,
+            onAssignChannelToTile = onAssignChannelToTile,
+            onRemoveChannelFromTile = onRemoveChannelFromTile,
+            onSoloTile = onSelectSolo,
+            onDismissControls = { showControlsOverlay = false },
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
@@ -446,6 +627,7 @@ private fun RenderTile(
     isFocused: Boolean,
     onFocus: () -> Unit,
     onSelect: () -> Unit,
+    onEmptyClick: () -> Unit,
     showInfo: Boolean
 ) {
     val channel = channels.getOrNull(tileIndex)
@@ -455,10 +637,10 @@ private fun RenderTile(
             modifier = Modifier
                 .fillMaxSize()
                 .background(TvSurface)
-                .border(borderStroke, RoundedCornerShape(4.dp))
+                .border(borderStroke, RoundedCornerShape(6.dp))
                 .clickable {
                     onFocus()
-                    onSelect()
+                    onEmptyClick()
                 },
             contentAlignment = Alignment.Center
         ) {
@@ -467,20 +649,20 @@ private fun RenderTile(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.GridView,
-                    contentDescription = null,
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add Channel",
                     tint = if (isFocused) TabloTeal else TextMuted,
-                    modifier = Modifier.height(24.dp)
+                    modifier = Modifier.size(28.dp)
                 )
                 Text(
-                    text = "Empty Tile",
-                    color = if (isFocused) TabloTeal else TextMuted,
+                    text = "+ Add Channel (Tile ${tileIndex + 1})",
+                    color = if (isFocused) TabloTeal else TextPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Press GUIDE to add a channel",
-                    color = TextMuted,
+                    text = "Press Select to choose channel",
+                    color = TextSecondary,
                     fontSize = 11.sp
                 )
             }
