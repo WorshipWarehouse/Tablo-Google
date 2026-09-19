@@ -48,6 +48,7 @@ fun TabloTvApp(
     val isPlaying by viewModel.isPlaying.collectAsState()
     val isLoadingChannels by viewModel.isLoadingChannels.collectAsState()
     val isLoadingGuide by viewModel.isLoadingGuide.collectAsState()
+    val focusedEpgTimeMs by viewModel.focusedEpgTimeMs.collectAsState()
 
     var showSettingsHub by remember { mutableStateOf(false) }
     var showQuickSaveDialog by remember { mutableStateOf(false) }
@@ -127,6 +128,8 @@ fun TabloTvApp(
                             focusRequester = guideFocusRequester,
                             onWatchChannel = { viewModel.tuneChannelFullscreen(it) },
                             onAssignToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
+                            focusedEpgTimeMs = focusedEpgTimeMs,
+                            onUpdateFocusedEpgTime = { viewModel.updateFocusedEpgTime(it) },
                             onBack = {
                                 // If already watching video in background, back returns to video; otherwise soft refresh
                                 if (activeChannels.any { it != null }) {

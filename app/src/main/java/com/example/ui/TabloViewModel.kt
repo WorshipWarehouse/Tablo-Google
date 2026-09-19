@@ -190,6 +190,13 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val _focusedEpgTimeMs = MutableStateFlow<Long>(System.currentTimeMillis())
+    val focusedEpgTimeMs: StateFlow<Long> = _focusedEpgTimeMs.asStateFlow()
+
+    fun updateFocusedEpgTime(timeMs: Long) {
+        _focusedEpgTimeMs.value = timeMs
+    }
+
     private val sessionTokens = mutableMapOf<Int, String>()
     private val keepaliveJobs = mutableMapOf<Int, Job>()
 
@@ -201,12 +208,14 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
         _activeMultiviewChannels.value = slots
 
         _tileErrors.value = _tileErrors.value - tileIndex
-        stopTileSession(tileIndex)
 
         viewModelScope.launch {
+            stopTileSession(tileIndex)
+
             val sessionResult = tabloRepository.fetchWatchStreamSession(device, channel)
             val url = sessionResult?.playlistUrl
             val token = sessionResult?.sessionToken
+            val keepaliveSec = sessionResult?.keepaliveSeconds ?: 10L
 
             if (url.isNullOrEmpty()) {
                 _tileErrors.value = _tileErrors.value + (tileIndex to STREAM_ERROR_MESSAGE)
@@ -214,30 +223,33 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
                 playerManager.playChannel(tileIndex, channel, url)
                 if (!token.isNullOrBlank()) {
                     sessionTokens[tileIndex] = token
-                    startKeepaliveJob(device, tileIndex, token)
+                    startKeepaliveJob(device, tileIndex, token, keepaliveSec)
                 }
             }
         }
     }
 
-    private fun startKeepaliveJob(device: TabloDevice, tileIndex: Int, token: String) {
+    private fun startKeepaliveJob(device: TabloDevice, tileIndex: Int, token: String, keepaliveSec: Long) {
         keepaliveJobs[tileIndex]?.cancel()
+        val delayMs = (keepaliveSec.coerceAtLeast(5L) * 1000L)
         keepaliveJobs[tileIndex] = viewModelScope.launch {
             while (true) {
-                delay(10_000)
+                delay(delayMs)
                 tabloRepository.sendKeepalive(device, token)
             }
         }
     }
 
-    private fun stopTileSession(tileIndex: Int) {
+    private suspend fun stopTileSession(tileIndex: Int) {
         keepaliveJobs[tileIndex]?.cancel()
         keepaliveJobs.remove(tileIndex)
         val token = sessionTokens.remove(tileIndex)
         val device = _tabloDevice.value
         if (device != null && token != null) {
-            viewModelScope.launch {
+            try {
                 tabloRepository.deleteSession(device, token)
+            } catch (e: Exception) {
+                Log.w("TabloViewModel", "Error deleting session $token for tile $tileIndex: ${e.message}")
             }
         }
     }
@@ -320,7 +332,7 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
         // Free decoders and resources on other tiles
         for (i in 0 until 4) {
             if (i != targetIndex) {
-                stopTileSession(i)
+                viewModelScope.launch { stopTileSession(i) }
                 playerManager.stopTile(i)
             }
         }
@@ -348,7 +360,7 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
 
     fun removeChannelFromTile(tileIndex: Int) {
         if (tileIndex in 0..3) {
-            stopTileSession(tileIndex)
+            viewModelScope.launch { stopTileSession(tileIndex) }
             val slots = _activeMultiviewChannels.value.toMutableList()
             if (tileIndex < slots.size) {
                 slots[tileIndex] = null

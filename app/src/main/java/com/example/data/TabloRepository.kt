@@ -405,7 +405,9 @@ class TabloRepository(
 
     data class WatchSessionResult(
         val playlistUrl: String,
-        val sessionToken: String? = null
+        val sessionToken: String? = null,
+        val expires: String? = null,
+        val keepaliveSeconds: Long? = null
     )
 
     suspend fun fetchGuideAirings(
@@ -528,10 +530,17 @@ class TabloRepository(
 
                     val rawPlaylist = watchResp.playlistUrl
                     val token = watchResp.token
+                    val expires = watchResp.expires
+                    val keepalive = watchResp.keepalive
                     if (!rawPlaylist.isNullOrBlank()) {
                         val fullPlaylist = if (rawPlaylist.startsWith("http")) rawPlaylist else "${device.localBaseUrl}$rawPlaylist"
-                        Log.i("TabloRepository", "Obtained Gen 4 live stream: $fullPlaylist (session token: $token)")
-                        return@withContext WatchSessionResult(fullPlaylist, token)
+                        Log.i("TabloRepository", "/watch success for ${channel.channelId} -> status: 200 OK, expires: $expires, keepalive: $keepalive, url: $fullPlaylist, token: $token")
+                        return@withContext WatchSessionResult(
+                            playlistUrl = fullPlaylist,
+                            sessionToken = token,
+                            expires = expires,
+                            keepaliveSeconds = keepalive
+                        )
                     }
                 } catch (e: Exception) {
                     Log.w("TabloRepository", "Gen 4 watch attempt failed ($watchUrl): ${e.message}")

@@ -12,14 +12,19 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.example.data.remote.DiagnosticsInterceptor
+import com.example.data.remote.NetworkDiagnosticsLogger
 import com.example.model.TabloChannel
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 @OptIn(UnstableApi::class)
 class MultiviewPlayerManager(
@@ -32,6 +37,14 @@ class MultiviewPlayerManager(
     private val retryCounts = mutableMapOf<Int, Int>()
     private val handler = Handler(Looper.getMainLooper())
     private var focusedTileIndex = 0
+
+    // Separate OkHttpClient for ExoPlayer HLS network requests (Port 80)
+    // Free of Tablo HMAC / Lighthouse auth headers; includes DiagnosticsInterceptor for logging
+    private val exoOkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(DiagnosticsInterceptor())
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
 
     fun getPlayer(tileIndex: Int): ExoPlayer {
         return getOrCreatePlayer(tileIndex)
@@ -51,13 +64,10 @@ class MultiviewPlayerManager(
             )
             .build()
 
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Tablo-FAST/1.7.0 (Mobile; iPhone; iOS 18.4)")
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(20000)
-            .setAllowCrossProtocolRedirects(true)
+        val okHttpDataSourceFactory = OkHttpDataSource.Factory(exoOkHttpClient)
+            .setUserAgent("Tablo-FAST/1.7.0")
 
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+        val dataSourceFactory = DefaultDataSource.Factory(context, okHttpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
@@ -85,14 +95,15 @@ class MultiviewPlayerManager(
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
+                        val formattedErr = formatPlaybackError(error)
                         val currentRetry = retryCounts.getOrDefault(tileIndex, 0)
                         Log.w(
                             "MultiviewPlayer",
-                            "Playback error on tile $tileIndex (attempt $currentRetry): ${error.errorCodeName} - ${error.message}"
+                            "Playback error on tile $tileIndex (attempt $currentRetry):\n$formattedErr"
                         )
                         val activeUrl = currentUrls[tileIndex]
                         if (activeUrl == null) {
-                            onPlayerError(tileIndex, error.message ?: "Stream error")
+                            onPlayerError(tileIndex, formattedErr)
                             return
                         }
                         if (currentRetry < 2) {
@@ -111,14 +122,60 @@ class MultiviewPlayerManager(
                                 }
                             }, 1500L)
                         } else {
-                            Log.e("MultiviewPlayer", "Tile $tileIndex exceeded max retries")
-                            onPlayerError(tileIndex, error.message ?: "Unable to play stream")
+                            Log.e("MultiviewPlayer", "Tile $tileIndex exceeded max retries:\n$formattedErr")
+                            onPlayerError(tileIndex, formattedErr)
                         }
                     }
                 })
             }
         players[tileIndex] = player
         return player
+    }
+
+    private fun formatPlaybackError(error: PlaybackException): String {
+        val errorCodeName = error.errorCodeName
+        var causeClass = ""
+        var causeMsg = ""
+        var httpCode: Int? = null
+        var httpUrl: String? = null
+
+        var current: Throwable? = error
+        while (current != null) {
+            val className = current.javaClass.simpleName
+            val msg = current.message
+            if (current !is PlaybackException && causeClass.isEmpty()) {
+                causeClass = className.ifBlank { current.javaClass.name }
+                causeMsg = msg ?: ""
+            }
+            if (current is HttpDataSource.HttpDataSourceException) {
+                httpUrl = current.dataSpec?.uri?.toString()
+                if (current is HttpDataSource.InvalidResponseCodeException) {
+                    httpCode = current.responseCode
+                }
+            }
+            current = current.cause
+        }
+
+        val sb = StringBuilder()
+        sb.append("[").append(errorCodeName).append("]")
+        if (causeClass.isNotEmpty()) {
+            sb.append(" ").append(causeClass)
+            if (causeMsg.isNotEmpty()) {
+                sb.append(": ").append(causeMsg)
+            }
+        } else if (!error.message.isNullOrBlank()) {
+            sb.append(" ").append(error.message)
+        }
+
+        if (httpCode != null || !httpUrl.isNullOrBlank()) {
+            val redactedUrl = NetworkDiagnosticsLogger.redactSensitiveData(httpUrl ?: "")
+            if (httpCode != null) {
+                sb.append("\nHTTP ").append(httpCode).append(" @ ").append(redactedUrl)
+            } else if (redactedUrl.isNotEmpty()) {
+                sb.append("\nURL: ").append(redactedUrl)
+            }
+        }
+        return sb.toString()
     }
 
     fun playChannel(tileIndex: Int, channel: TabloChannel, streamUrl: String) {

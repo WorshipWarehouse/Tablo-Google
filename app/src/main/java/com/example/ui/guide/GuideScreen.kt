@@ -113,6 +113,8 @@ fun GuideScreen(
     onRequestTopNav: () -> Unit = {},
     onNavigateLeftPage: () -> Unit = {},
     onNavigateRightPage: () -> Unit = {},
+    focusedEpgTimeMs: Long = System.currentTimeMillis(),
+    onUpdateFocusedEpgTime: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val windowStart = remember { GuideTiming.windowStartMs() }
@@ -410,6 +412,8 @@ fun GuideScreen(
                                 favoriteChannelIds = favoriteChannelIds,
                                 scheduledRecordingIds = scheduledRecordingIds,
                                 firstContentFocusRequester = firstContentFocusRequester,
+                                focusedEpgTimeMs = focusedEpgTimeMs,
+                                onUpdateFocusedEpgTime = onUpdateFocusedEpgTime,
                                 onWatchChannel = onWatchChannel,
                                 onShowDetails = { ch, airing ->
                                     programDetailsDialog = Pair(ch, airing)
@@ -838,6 +842,8 @@ private fun Tablo4UTimelineGrid(
     favoriteChannelIds: Set<String>,
     scheduledRecordingIds: Set<String>,
     firstContentFocusRequester: FocusRequester,
+    focusedEpgTimeMs: Long,
+    onUpdateFocusedEpgTime: (Long) -> Unit,
     onWatchChannel: (TabloChannel) -> Unit,
     onShowDetails: (TabloChannel, TabloAiring) -> Unit,
     onToggleFavorite: (TabloChannel) -> Unit,
@@ -852,6 +858,31 @@ private fun Tablo4UTimelineGrid(
         (0 until GuideTiming.SLOT_COUNT).map { GuideTiming.slotTimeMs(windowStart, it) }
     }
     val contentWidth = (timelineWidth + CHANNEL_COLUMN_WIDTH.toInt()).dp
+
+    val airingFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+
+    fun getAiringFocusRequester(channelId: String, airingId: String): FocusRequester {
+        val key = "${channelId}_${airingId}"
+        return airingFocusRequesters.getOrPut(key) { FocusRequester() }
+    }
+
+    fun navigateUpDown(currentChannelIndex: Int, isUp: Boolean) {
+        val targetIndex = if (isUp) currentChannelIndex - 1 else currentChannelIndex + 1
+        if (targetIndex in channels.indices) {
+            val targetChannel = channels[targetIndex]
+            val targetAirings = channelAiringsMap[targetChannel.channelId].orEmpty()
+            val targetAiring = targetAirings.find {
+                val endMs = it.startTimeMillis + (it.durationSeconds * 1000L)
+                it.startTimeMillis <= focusedEpgTimeMs && endMs > focusedEpgTimeMs
+            } ?: targetAirings.minByOrNull { Math.abs(it.startTimeMillis - focusedEpgTimeMs) }
+
+            if (targetAiring != null) {
+                getAiringFocusRequester(targetChannel.channelId, targetAiring.airingId).safeRequest()
+            }
+        } else if (isUp && currentChannelIndex == 0) {
+            onRequestCategoryNav()
+        }
+    }
 
     // Calculate Guide Time Indicator Position
     val nowOffsetMinutes = ((now - windowStart) / 60_000L).toFloat()
@@ -973,6 +1004,9 @@ private fun Tablo4UTimelineGrid(
                                 isFavorite = favoriteChannelIds.contains(channel.channelId),
                                 scheduledRecordingIds = scheduledRecordingIds,
                                 focusRequester = if (index == 0) firstContentFocusRequester else null,
+                                getAiringFocusRequester = ::getAiringFocusRequester,
+                                onAiringFocused = { airing -> onUpdateFocusedEpgTime(airing.startTimeMillis) },
+                                onNavigateUpDown = { channelIdx, isUp -> navigateUpDown(channelIdx, isUp) },
                                 onTune = { onWatchChannel(channel) },
                                 onAiringClick = { airing -> onShowDetails(channel, airing) },
                                 onToggleFavorite = { onToggleFavorite(channel) },
@@ -1017,6 +1051,9 @@ private fun Tablo4UTimelineRow(
     isFavorite: Boolean,
     scheduledRecordingIds: Set<String>,
     focusRequester: FocusRequester?,
+    getAiringFocusRequester: (String, String) -> FocusRequester,
+    onAiringFocused: (TabloAiring) -> Unit,
+    onNavigateUpDown: (Int, Boolean) -> Unit,
     onTune: () -> Unit,
     onAiringClick: (TabloAiring) -> Unit,
     onToggleFavorite: () -> Unit,
@@ -1059,6 +1096,7 @@ private fun Tablo4UTimelineRow(
                     val blockWidthPx = (blockDurationMinutes * PX_PER_MINUTE).coerceAtLeast(40f)
 
                     val isRecorded = scheduledRecordingIds.contains(airing.airingId)
+                    val aFocusRequester = getAiringFocusRequester(channel.channelId, airing.airingId)
 
                     Tablo4UAiringBlock(
                         airing = airing,
@@ -1066,8 +1104,12 @@ private fun Tablo4UTimelineRow(
                         isRecorded = isRecorded,
                         leftPx = blockLeftPx,
                         widthPx = blockWidthPx,
+                        focusRequester = aFocusRequester,
+                        onFocused = { onAiringFocused(airing) },
                         onClick = { onAiringClick(airing) },
                         onTune = onTune,
+                        onNavigateUp = { onNavigateUpDown(index, true) },
+                        onNavigateDown = { onNavigateUpDown(index, false) },
                         isTopRow = index == 0,
                         onRequestCategoryNav = onRequestCategoryNav
                     )
@@ -1204,10 +1246,14 @@ private fun Tablo4UAiringBlock(
     isRecorded: Boolean,
     leftPx: Float,
     widthPx: Float,
+    focusRequester: FocusRequester? = null,
+    onFocused: () -> Unit = {},
     onClick: () -> Unit,
     onTune: () -> Unit,
-    isTopRow: Boolean,
-    onRequestCategoryNav: () -> Unit
+    onNavigateUp: () -> Unit = {},
+    onNavigateDown: () -> Unit = {},
+    isTopRow: Boolean = false,
+    onRequestCategoryNav: () -> Unit = {}
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val genreColor = getGenreColor(airing.category)
@@ -1219,39 +1265,50 @@ private fun Tablo4UAiringBlock(
         BorderStroke(0.5.dp, Color(0x442E3A4E))
     }
 
-    Box(
-        modifier = Modifier
-            .offset(x = leftPx.dp, y = 3.dp)
-            .width((widthPx - 3f).dp)
-            .height((ROW_HEIGHT - 6f).dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(bg)
-            .border(border, RoundedCornerShape(6.dp))
-            .onFocusChanged { isFocused = it.isFocused }
-            .clickable { onClick() }
-            .focusable()
-            .onKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                    when (keyEvent.nativeKeyEvent.keyCode) {
-                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                            onClick()
-                            true
-                        }
-                        KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                            onTune()
-                            true
-                        }
-                        KeyEvent.KEYCODE_DPAD_UP -> {
-                            if (isTopRow) {
-                                onRequestCategoryNav()
-                                true
-                            } else false
-                        }
-                        else -> false
-                    }
-                } else false
+    var mod = Modifier
+        .offset(x = leftPx.dp, y = 3.dp)
+        .width((widthPx - 3f).dp)
+        .height((ROW_HEIGHT - 6f).dp)
+        .clip(RoundedCornerShape(6.dp))
+        .background(bg)
+        .border(border, RoundedCornerShape(6.dp))
+        .onFocusChanged { state ->
+            isFocused = state.isFocused
+            if (state.isFocused) {
+                onFocused()
             }
-    ) {
+        }
+        .clickable { onClick() }
+        .focusable()
+        .onKeyEvent { keyEvent ->
+            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                when (keyEvent.nativeKeyEvent.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                        onClick()
+                        true
+                    }
+                    KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                        onTune()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        onNavigateUp()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        onNavigateDown()
+                        true
+                    }
+                    else -> false
+                }
+            } else false
+        }
+
+    if (focusRequester != null) {
+        mod = mod.focusRequester(focusRequester)
+    }
+
+    Box(modifier = mod) {
         // Left Color Bar based on Genre / Category
         Box(
             modifier = Modifier
