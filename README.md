@@ -86,13 +86,33 @@ app/src/main/java/com/example/
 
 ## Getting Started
 
-### Prerequisites
+### Quick Start & Installation
+
+To install the latest pre-built APK immediately onto your Android TV or Amazon Fire TV device:
+
+```bash
+cd ~/Tablo-Google
+git pull
+adb install -r outputs/tablo-multiview-debug.apk
+```
+
+If multiple devices are connected or targeting a network device:
+
+```bash
+adb -s DEVICE_IP:5555 install -r outputs/tablo-multiview-debug.apk
+```
+
+Replace `DEVICE_IP:5555` with your device's actual network address.
+
+---
+
+### Prerequisites & Manual Building
 
 - Android Studio Koala / Ladybug or newer
 - Android SDK 36 (compileSdk 36, minSdk 24)
 - Java 17+
 
-### Building the Project & Persistent APK Output
+#### Building the Project & Persistent APK Output
 
 1. Build the debug APK using Gradle:
    ```bash
@@ -108,7 +128,7 @@ app/src/main/java/com/example/
    gradle :app:testDebugUnitTest
    ```
 
-### Deploying & Sideloading via ADB (Android TV / Fire TV)
+#### Deploying & Sideloading via ADB (Android TV / Fire TV)
 
 1. Enable **Developer Options** and **ADB Debugging** on your Fire TV or Android TV device:
    - **Fire TV**: *Settings > My Fire TV > Developer Options > ADB Debugging (ON)*
@@ -117,9 +137,13 @@ app/src/main/java/com/example/
    ```bash
    adb connect <tv-ip-address>:5555
    ```
-3. Install the persistent output APK directly:
+3. Install the current APK output directly:
    ```bash
    adb install -r outputs/tablo-multiview-debug.apk
+   ```
+   Or target specifically:
+   ```bash
+   adb -s <tv-ip-address>:5555 install -r outputs/tablo-multiview-debug.apk
    ```
 4. Launch the application immediately via ADB:
    ```bash
