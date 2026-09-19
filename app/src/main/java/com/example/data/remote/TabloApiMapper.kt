@@ -106,6 +106,58 @@ internal object TabloApiMapper {
         )
     }
 
+    fun airingFromGen4Cloud(channelId: String, cloudAiring: TabloGen4CloudAiring, nowMillis: Long): TabloAiring? {
+        val startMillis = cloudAiring.startTimeMillis
+            ?: TabloTime.parseIso8601(cloudAiring.datetime)
+            ?: TabloTime.parseIso8601(cloudAiring.startTime)
+            ?: return null
+
+        val durationSeconds = (cloudAiring.duration ?: DEFAULT_DURATION_SECONDS).coerceAtLeast(60L)
+        val endMillis = startMillis + (durationSeconds * 1000L)
+
+        val title = cloudAiring.title
+            ?: cloudAiring.showTitle
+            ?: cloudAiring.program?.title
+            ?: cloudAiring.show?.title
+            ?: "Live Broadcast"
+
+        val description = cloudAiring.description
+            ?: cloudAiring.plot
+            ?: cloudAiring.synopsis
+            ?: cloudAiring.program?.description
+            ?: cloudAiring.show?.description
+
+        val category = cloudAiring.category
+            ?: cloudAiring.genre
+            ?: cloudAiring.program?.category
+            ?: cloudAiring.show?.category
+            ?: "Program"
+
+        val rating = cloudAiring.rating
+            ?: cloudAiring.program?.rating
+            ?: cloudAiring.show?.rating
+            ?: ""
+
+        val airingId = cloudAiring.identifier
+            ?: cloudAiring.airingId
+            ?: cloudAiring.id
+            ?: "$channelId-$startMillis"
+
+        return TabloAiring(
+            airingId = airingId,
+            channelId = channelId,
+            title = title,
+            episodeTitle = cloudAiring.episodeTitle,
+            description = description,
+            startTimeMillis = startMillis,
+            durationSeconds = durationSeconds,
+            category = category,
+            rating = rating,
+            isLive = nowMillis in startMillis until endMillis,
+            thumbnail = cloudAiring.imageUrl ?: cloudAiring.thumbnail
+        )
+    }
+
     private fun determineCategory(path: String, detail: TabloAiringDetailResponse?): String {
         if (detail?.sportPath != null || detail?.event != null || "/sports/" in path) {
             return "Sports"

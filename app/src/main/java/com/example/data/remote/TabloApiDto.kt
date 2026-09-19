@@ -249,12 +249,49 @@ data class TabloGen4ChannelInfo(
 )
 
 @JsonClass(generateAdapter = true)
+data class TabloGen4CloudProgram(
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "description") val description: String? = null,
+    @Json(name = "category") val category: String? = null,
+    @Json(name = "rating") val rating: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4CloudAiring(
+    @Json(name = "identifier") val identifier: String? = null,
+    @Json(name = "airing_id") val airingId: String? = null,
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "channel_id") val channelId: String? = null,
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "show_title") val showTitle: String? = null,
+    @Json(name = "episode_title") val episodeTitle: String? = null,
+    @Json(name = "description") val description: String? = null,
+    @Json(name = "plot") val plot: String? = null,
+    @Json(name = "synopsis") val synopsis: String? = null,
+    @Json(name = "datetime") val datetime: String? = null,
+    @Json(name = "start_time") val startTime: String? = null,
+    @Json(name = "start_time_millis") val startTimeMillis: Long? = null,
+    @Json(name = "duration") val duration: Long? = null,
+    @Json(name = "category") val category: String? = null,
+    @Json(name = "genre") val genre: String? = null,
+    @Json(name = "rating") val rating: String? = null,
+    @Json(name = "image_url") val imageUrl: String? = null,
+    @Json(name = "thumbnail") val thumbnail: String? = null,
+    @Json(name = "program") val program: TabloGen4CloudProgram? = null,
+    @Json(name = "show") val show: TabloGen4CloudProgram? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class TabloGen4CloudChannel(
     @Json(name = "identifier") val identifier: String,
     @Json(name = "name") val name: String? = null,
     @Json(name = "kind") val kind: String = "ota",
     @Json(name = "ota") val ota: TabloGen4ChannelInfo? = null,
-    @Json(name = "ott") val ott: TabloGen4ChannelInfo? = null
+    @Json(name = "ott") val ott: TabloGen4ChannelInfo? = null,
+    @Json(name = "airings") val airings: List<TabloGen4CloudAiring>? = null,
+    @Json(name = "programs") val programs: List<TabloGen4CloudAiring>? = null,
+    @Json(name = "schedule") val schedule: List<TabloGen4CloudAiring>? = null,
+    @Json(name = "current_airing") val currentAiring: TabloGen4CloudAiring? = null
 )
 
 @JsonClass(generateAdapter = true)

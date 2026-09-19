@@ -52,26 +52,18 @@ class MultiviewPlayerManager(
             .build()
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("TabloTV/1.0 (Android TV; ExoPlayer)")
-            .setConnectTimeoutMs(8000)
-            .setReadTimeoutMs(12000)
+            .setUserAgent("Tablo-FAST/1.7.0 (Mobile; iPhone; iOS 18.4)")
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(20000)
             .setAllowCrossProtocolRedirects(true)
 
         val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
-        val safeMediaCodecSelector = MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
-            val decoders = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
-            // Filter out buggy goldfish emulator decoder that crashes with Error 0xe / Bad Address
-            val stableDecoders = decoders.filter { !it.name.contains("goldfish", ignoreCase = true) }
-            if (stableDecoders.isNotEmpty()) stableDecoders else decoders
-        }
-
         val renderersFactory = DefaultRenderersFactory(context)
-            .setMediaCodecSelector(safeMediaCodecSelector)
+            .setMediaCodecSelector(MediaCodecSelector.DEFAULT)
             .setEnableDecoderFallback(true)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
         val player = ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
