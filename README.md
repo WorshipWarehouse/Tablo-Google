@@ -86,9 +86,11 @@ app/src/main/java/com/example/
 
 ## Getting Started
 
-### Quick Start & Installation
+### Quick Testing & Installation (Pre-Built APK)
 
-To install the latest pre-built APK immediately onto your Android TV or Amazon Fire TV device:
+> **Note**: `outputs/tablo-multiview-debug.apk` is the **latest pre-built APK** generated directly by AI Studio for every iteration. **You do NOT need to build the application yourself or configure Gradle/Android SDK for normal testing.**
+
+Simply pull the latest repository and install the pre-built APK directly onto your Android TV or Amazon Fire TV device:
 
 ```bash
 cd ~/Tablo-Google
@@ -96,32 +98,42 @@ git pull
 adb install -r outputs/tablo-multiview-debug.apk
 ```
 
-If multiple devices are connected or targeting a network device:
+If multiple devices are connected or targeting a specific TV over Wi-Fi/Ethernet:
 
 ```bash
 adb -s DEVICE_IP:5555 install -r outputs/tablo-multiview-debug.apk
 ```
 
-Replace `DEVICE_IP:5555` with your device's actual network address.
+*(Replace `DEVICE_IP:5555` with your TV's actual IP address.)*
+
+To launch the app immediately via ADB:
+
+```bash
+adb shell am start -n com.example/.MainActivity
+```
 
 ---
 
-### Prerequisites & Manual Building
+### Optional: Manual Building from Source
+
+If you wish to compile or modify the application locally:
 
 - Android Studio Koala / Ladybug or newer
 - Android SDK 36 (compileSdk 36, minSdk 24)
 - Java 17+
 
-#### Building the Project & Persistent APK Output
+#### Building the Project
 
-1. Build the debug APK using Gradle:
-   ```bash
-   gradle assembleDebug
-   ```
-   The build automatically executes `copyDebugApkToOutputs`, placing the ready-to-sideload APK at:
-   ```text
-   outputs/tablo-multiview-debug.apk
-   ```
+Run Gradle to compile and assemble the debug APK:
+
+```bash
+gradle assembleDebug
+```
+
+The Gradle build automatically runs `copyDebugApkToOutputs`, placing the updated APK at:
+```text
+outputs/tablo-multiview-debug.apk
+```
 
 2. Run unit and Robolectric tests:
    ```bash
