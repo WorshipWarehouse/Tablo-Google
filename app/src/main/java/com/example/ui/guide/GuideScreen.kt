@@ -244,6 +244,7 @@ fun GuideScreen(
                             TvLiveChannelScrollableList(
                                 channels = filteredChannels,
                                 airings = airings,
+                                windowStart = windowStart,
                                 now = now,
                                 timeFormat = timeFormat,
                                 firstItemFocusRequester = firstItemFocusRequester,
@@ -625,6 +626,7 @@ private fun TvFilterChip(
 private fun TvLiveChannelScrollableList(
     channels: List<TabloChannel>,
     airings: List<TabloAiring>,
+    windowStart: Long,
     now: Long,
     timeFormat: SimpleDateFormat,
     firstItemFocusRequester: FocusRequester,
@@ -646,8 +648,9 @@ private fun TvLiveChannelScrollableList(
     ) {
         itemsIndexed(channels, key = { _, ch -> ch.channelId }) { index, channel ->
             // Find current live broadcast and upcoming broadcast for this channel
-            val channelAirings = remember(channel, airings) {
-                airings.filter { it.channelId == channel.channelId }.sortedBy { it.startTimeMillis }
+            val channelAirings = remember(channel, airings, windowStart, now) {
+                val windowEnd = GuideTiming.windowEndMs(now)
+                TabloGuideSynthesizer.resolveAiringsForChannel(channel, airings, windowStart, windowEnd, now)
             }
 
             val currentAiring = channelAirings.firstOrNull { airing ->
@@ -1134,7 +1137,8 @@ private fun TvTimelineGrid(
                 .weight(1f)
         ) {
             itemsIndexed(channels, key = { _, ch -> ch.channelId }) { index, channel ->
-                val channelAirings = airingsForChannel(channel, airings)
+                val windowEnd = GuideTiming.windowEndMs(now)
+                val channelAirings = TabloGuideSynthesizer.resolveAiringsForChannel(channel, airings, windowStart, windowEnd, now)
                 val nowLineX = PX_PER_MINUTE * ((now - windowStart) / 60_000L)
 
                 HorizontalGuideRow(
