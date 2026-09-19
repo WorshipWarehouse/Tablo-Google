@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,10 +23,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,13 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.TabloAiring
 import com.example.model.TabloChannel
-import com.example.ui.components.TvRemoteKeyboard
 import com.example.ui.theme.LiveRed
 import com.example.ui.theme.TabloTeal
 import com.example.ui.theme.TextMuted
@@ -70,6 +76,7 @@ fun SearchScreen(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("ALL") }
+    val focusManager = LocalFocusManager.current
 
     val categories = listOf("ALL", "SPORTS", "MOVIES", "SERIES")
 
@@ -115,7 +122,7 @@ fun SearchScreen(
         modifier = modifier
             .fillMaxSize()
             .background(TvBackground)
-            .padding(horizontal = 28.dp, vertical = 18.dp)
+            .padding(horizontal = 40.dp, vertical = 20.dp)
             .onKeyEvent { keyEvent ->
                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                     when (keyEvent.nativeKeyEvent.keyCode) {
@@ -132,70 +139,70 @@ fun SearchScreen(
                 } else false
             }
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            // Left Side: Fire TV On-Screen Remote Keyboard + Query Display
-            Column(
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Top Section: Centered Title, Native Search Text Field & Category Filter Pills
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
-                    .width(360.dp)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
             ) {
-                Text(
-                    text = "SEARCH LIVE TV",
-                    color = TextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp
+                // Native Fire TV Search Field
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            text = "Search broadcasts, shows, or channels...",
+                            color = TextMuted.copy(alpha = 0.6f),
+                            fontSize = 15.sp
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = TabloTeal,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear Search",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = { focusManager.clearFocus() }
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedBorderColor = TvFocusHighlight,
+                        unfocusedBorderColor = TvBorder,
+                        focusedContainerColor = TvSurfaceElevated,
+                        unfocusedContainerColor = TvSurface,
+                        cursorColor = TabloTeal
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp)
                 )
 
-                // Search Input Field Box
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(TvSurfaceElevated, RoundedCornerShape(8.dp))
-                        .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        tint = TabloTeal,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = if (searchQuery.isEmpty()) "Type using Fire TV remote..." else searchQuery,
-                        color = if (searchQuery.isEmpty()) TextMuted else TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                // On-Screen D-Pad Navigable Keyboard
-                TvRemoteKeyboard(
-                    onKeyPress = { char -> searchQuery += char },
-                    onBackspace = { if (searchQuery.isNotEmpty()) searchQuery = searchQuery.dropLast(1) },
-                    onClear = { searchQuery = "" },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            Spacer(modifier = Modifier.width(28.dp))
-
-            // Right Side: Category Filters & Search Results
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-            ) {
-                // Category Pills
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 14.dp)
-                ) {
+                // Category Pills aligned on same row
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     categories.forEach { cat ->
                         TvCategoryFilterPill(
                             label = cat,
@@ -204,63 +211,81 @@ fun SearchScreen(
                         )
                     }
                 }
+            }
 
-                // Results Counter
+            // Results Counter & Status
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = "${filteredResults.size} broadcast matches found",
                     color = TextSecondary,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 10.dp)
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
                 )
 
-                // Search scope note
                 if (airings.isEmpty()) {
                     Text(
-                        text = "No guide data is loaded yet. Search only covers the currently loaded guide window; visit the TV Guide to refresh programming.",
+                        text = "Visit the TV Guide to load full programming window",
                         color = TextMuted,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 10.dp)
+                        fontSize = 12.sp
                     )
                 }
+            }
 
-                // Results List
-                if (filteredResults.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
+            // Results List
+            if (filteredResults.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = TextMuted.copy(alpha = 0.4f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "No broadcasts match your search",
+                            text = if (searchQuery.isBlank()) "Type in the search bar above using your Fire TV remote" else "No broadcasts match \"$searchQuery\"",
                             color = TextMuted,
-                            fontSize = 14.sp
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
-                } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(filteredResults) { result ->
-                            when (result) {
-                                is SearchResultItem.AiringItem -> {
-                                    SearchAiringResultCard(
-                                        airing = result.airing,
-                                        channel = result.channel,
-                                        onClick = {
-                                            if (result.channel != null) {
-                                                onSelectChannel(result.channel)
-                                            }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    items(filteredResults) { result ->
+                        when (result) {
+                            is SearchResultItem.AiringItem -> {
+                                SearchAiringResultCard(
+                                    airing = result.airing,
+                                    channel = result.channel,
+                                    onClick = {
+                                        if (result.channel != null) {
+                                            onSelectChannel(result.channel)
                                         }
-                                    )
-                                }
-                                is SearchResultItem.ChannelItem -> {
-                                    SearchChannelResultCard(
-                                        channel = result.channel,
-                                        onClick = { onSelectChannel(result.channel) }
-                                    )
-                                }
+                                    }
+                                )
+                            }
+                            is SearchResultItem.ChannelItem -> {
+                                SearchChannelResultCard(
+                                    channel = result.channel,
+                                    onClick = { onSelectChannel(result.channel) }
+                                )
                             }
                         }
                     }
@@ -307,12 +332,12 @@ fun TvCategoryFilterPill(
             .border(border, RoundedCornerShape(16.dp))
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Text(
             text = label,
             color = contentColor,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold
         )
     }
@@ -342,33 +367,33 @@ fun SearchAiringResultCard(
             .border(border, RoundedCornerShape(8.dp))
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 18.dp, vertical = 14.dp)
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (airing.isLive) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
+                            .size(7.dp)
                             .background(if (isFocused) Color.Black else LiveRed, CircleShape)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text(
                     text = airing.title,
                     color = titleColor,
-                    fontSize = 15.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             val channelInfo = if (channel != null) "${channel.displayChannel} ${channel.network} • " else ""
             Text(
                 text = "$channelInfo${airing.category} • ${airing.rating}",
                 color = subColor,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -379,13 +404,13 @@ fun SearchAiringResultCard(
                 imageVector = Icons.Default.PlayArrow,
                 contentDescription = "Tune In",
                 tint = if (isFocused) Color.Black else TabloTeal,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(24.dp)
             )
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = "Watch",
                 color = if (isFocused) Color.Black else TabloTeal,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -415,33 +440,33 @@ fun SearchChannelResultCard(
             .border(border, RoundedCornerShape(8.dp))
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 18.dp, vertical = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .background(if (isFocused) Color.Black else TabloTeal.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 Text(
                     text = channel.displayChannel,
                     color = if (isFocused) TabloTeal else Color.Black,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             Column {
                 Text(
                     text = "${channel.callSign} (${channel.network})",
                     color = titleColor,
-                    fontSize = 15.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "OTA Live Feed • ${channel.resolution}",
                     color = subColor,
-                    fontSize = 12.sp
+                    fontSize = 13.sp
                 )
             }
         }
@@ -449,7 +474,7 @@ fun SearchChannelResultCard(
         Text(
             text = "Tune In",
             color = if (isFocused) Color.Black else TabloTeal,
-            fontSize = 13.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold
         )
     }

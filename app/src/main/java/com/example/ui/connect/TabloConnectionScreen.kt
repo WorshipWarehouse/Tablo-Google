@@ -25,10 +25,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
@@ -38,6 +42,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,14 +54,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.TabloDevice
-import com.example.ui.components.TvRemoteKeyboard
 import com.example.ui.theme.LiveRed
 import com.example.ui.theme.TabloTeal
 import com.example.ui.theme.TextMuted
@@ -435,118 +445,114 @@ private fun AccountLoginPanel(
     onFieldSelect: (Int) -> Unit,
     onSubmit: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(TvSurface)
             .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(12.dp))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Default.AccountCircle, contentDescription = null, tint = TabloTeal, modifier = Modifier.size(22.dp))
-            Text("Tablo Account Cloud Sign-In", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("Tablo Account Cloud Sign-In", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
 
-        // Email and Password Selector Boxes
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Email Input Box
-            val isEmailActive = activeField == 0
-            val emailBorder = if (isEmailActive) BorderStroke(2.dp, TabloTeal) else BorderStroke(1.dp, TvBorder)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isEmailActive) TvSurfaceElevated else TvBackground)
-                    .border(emailBorder, RoundedCornerShape(8.dp))
-                    .clickable { onFieldSelect(0) }
-                    .focusable()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Column {
-                    Text("EMAIL", color = if (isEmailActive) TabloTeal else TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = if (email.isEmpty()) "Tap keyboard below" else email,
-                        color = if (email.isEmpty()) TextMuted else TextPrimary,
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+        // Native Fire TV Email Field
+        OutlinedTextField(
+            value = email,
+            onValueChange = onEmailChange,
+            label = { Text("Tablo Account Email", fontSize = 12.sp) },
+            placeholder = { Text("you@example.com", color = TextMuted.copy(alpha = 0.6f)) },
+            leadingIcon = {
+                Icon(Icons.Default.Email, contentDescription = null, tint = TabloTeal)
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next
+            ),
+            keyboardActions = KeyboardActions(
+                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedBorderColor = TvFocusHighlight,
+                unfocusedBorderColor = TvBorder,
+                focusedContainerColor = TvSurfaceElevated,
+                unfocusedContainerColor = TvBackground,
+                focusedLabelColor = TabloTeal,
+                unfocusedLabelColor = TextMuted,
+                cursorColor = TabloTeal
+            ),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
 
-            // Password Input Box
-            val isPassActive = activeField == 1
-            val passBorder = if (isPassActive) BorderStroke(2.dp, TabloTeal) else BorderStroke(1.dp, TvBorder)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isPassActive) TvSurfaceElevated else TvBackground)
-                    .border(passBorder, RoundedCornerShape(8.dp))
-                    .clickable { onFieldSelect(1) }
-                    .focusable()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Column {
-                    Text("PASSWORD", color = if (isPassActive) TabloTeal else TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = if (password.isEmpty()) "Tap keyboard below" else "•".repeat(password.length),
-                        color = if (password.isEmpty()) TextMuted else TextPrimary,
-                        fontSize = 13.sp,
-                        maxLines = 1
-                    )
+        // Native Fire TV Password Field
+        OutlinedTextField(
+            value = password,
+            onValueChange = onPasswordChange,
+            label = { Text("Password", fontSize = 12.sp) },
+            placeholder = { Text("Enter password", color = TextMuted.copy(alpha = 0.6f)) },
+            leadingIcon = {
+                Icon(Icons.Default.Lock, contentDescription = null, tint = TabloTeal)
+            },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    focusManager.clearFocus()
+                    if (email.isNotBlank() && password.isNotBlank()) onSubmit()
                 }
-            }
-        }
-
-        // Embedded Remote Keyboard
-        TvRemoteKeyboard(
-            onKeyPress = { char ->
-                if (activeField == 0) {
-                    onEmailChange(email + char)
-                } else {
-                    onPasswordChange(password + char)
-                }
-            },
-            onBackspace = {
-                if (activeField == 0 && email.isNotEmpty()) {
-                    onEmailChange(email.dropLast(1))
-                } else if (activeField == 1 && password.isNotEmpty()) {
-                    onPasswordChange(password.dropLast(1))
-                }
-            },
-            onClear = {
-                if (activeField == 0) onEmailChange("") else onPasswordChange("")
-            },
-            onDone = {
-                if (activeField == 0) onFieldSelect(1) else onSubmit()
-            },
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedBorderColor = TvFocusHighlight,
+                unfocusedBorderColor = TvBorder,
+                focusedContainerColor = TvSurfaceElevated,
+                unfocusedContainerColor = TvBackground,
+                focusedLabelColor = TabloTeal,
+                unfocusedLabelColor = TextMuted,
+                cursorColor = TabloTeal
+            ),
+            shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth()
         )
 
         // Sign In Button
         Button(
-            onClick = onSubmit,
+            onClick = {
+                focusManager.clearFocus()
+                onSubmit()
+            },
             enabled = !isLoggingIn && email.isNotBlank(),
             colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+            shape = RoundedCornerShape(8.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
+                .height(48.dp)
         ) {
             if (isLoggingIn) {
                 CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Signing In...", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("Signing In...", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             } else {
-                Text("Sign In & Find Tablo", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("Sign In & Find Tablo", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         }
     }
@@ -561,45 +567,66 @@ private fun DirectIpPanel(
     onPortChange: (Int) -> Unit,
     onConnect: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(TvSurface)
             .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(12.dp))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Default.SettingsEthernet, contentDescription = null, tint = TabloTeal, modifier = Modifier.size(22.dp))
-            Text("Direct IP & Port Connection", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("Direct IP & Port Connection", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
 
-        // IP Address & Port Display Row
+        // Native Fire TV IP Input Field
+        OutlinedTextField(
+            value = ip,
+            onValueChange = onIpChange,
+            label = { Text("Tablo IP Address", fontSize = 12.sp) },
+            placeholder = { Text("e.g. 192.168.1.100", color = TextMuted.copy(alpha = 0.6f)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    focusManager.clearFocus()
+                    if (ip.isNotBlank()) onConnect()
+                }
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedBorderColor = TvFocusHighlight,
+                unfocusedBorderColor = TvBorder,
+                focusedContainerColor = TvSurfaceElevated,
+                unfocusedContainerColor = TvBackground,
+                focusedLabelColor = TabloTeal,
+                unfocusedLabelColor = TextMuted,
+                cursorColor = TabloTeal
+            ),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Port Selection Row
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // IP Input Box
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(TvSurfaceElevated)
-                    .border(BorderStroke(2.dp, TabloTeal), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Column {
-                    Text("TABLO IP ADDRESS", color = TabloTeal, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(text = ip.ifEmpty { "e.g. 192.168.1.100" }, color = TextPrimary, fontSize = 13.sp)
-                }
-            }
-
-            // Port Selection Buttons (8885 vs 8881)
+            Text("Port:", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             listOf(8885, 8881).forEach { p ->
                 val isSelected = port == p
                 Button(
@@ -607,40 +634,37 @@ private fun DirectIpPanel(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isSelected) TabloTeal else TvSurfaceElevated
                     ),
-                    modifier = Modifier.height(44.dp)
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.height(38.dp)
                 ) {
                     Text(
                         text = ":$p",
                         color = if (isSelected) Color.Black else TextPrimary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
                     )
                 }
             }
         }
 
-        // Embedded Remote Keyboard for IP entry
-        TvRemoteKeyboard(
-            onKeyPress = { char -> onIpChange(ip + char) },
-            onBackspace = { if (ip.isNotEmpty()) onIpChange(ip.dropLast(1)) },
-            onClear = { onIpChange("") },
-            onDone = onConnect,
-            modifier = Modifier.fillMaxWidth()
-        )
-
         Button(
-            onClick = onConnect,
+            onClick = {
+                focusManager.clearFocus()
+                onConnect()
+            },
             enabled = !isConnecting && ip.isNotBlank(),
             colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+            shape = RoundedCornerShape(8.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
+                .height(48.dp)
         ) {
             if (isConnecting) {
                 CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Testing Connection...", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("Testing Connection...", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             } else {
-                Text("Connect to $ip:$port", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("Connect to $ip:$port", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         }
     }
