@@ -483,6 +483,11 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
         loadGuide(device, _channels.value)
     }
 
+    fun refreshChannelsAndGuide() {
+        val device = _tabloDevice.value ?: return
+        loadChannelsAndGuide(device)
+    }
+
     fun disconnect() {
         viewModelScope.launch {
             playerManager.releaseAll()

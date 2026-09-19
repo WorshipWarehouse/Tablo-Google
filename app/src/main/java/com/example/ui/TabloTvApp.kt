@@ -54,6 +54,8 @@ fun TabloTvApp(
     val connectionError by viewModel.connectionError.collectAsState()
     val savedMultiviews by viewModel.savedMultiviews.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
+    val isLoadingChannels by viewModel.isLoadingChannels.collectAsState()
+    val isLoadingGuide by viewModel.isLoadingGuide.collectAsState()
 
     var showQuickSaveDialog by remember { mutableStateOf(false) }
 
@@ -183,6 +185,10 @@ fun TabloTvApp(
                                     GuideScreen(
                                         channels = channels,
                                         airings = airings,
+                                        tabloDevice = tabloDevice,
+                                        isLoading = isLoadingChannels || isLoadingGuide,
+                                        onRefresh = { viewModel.refreshChannelsAndGuide() },
+                                        focusRequester = contentFocusRequester,
                                         onWatchChannel = { viewModel.tuneChannelFullscreen(it) },
                                         onAssignToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
                                         onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
