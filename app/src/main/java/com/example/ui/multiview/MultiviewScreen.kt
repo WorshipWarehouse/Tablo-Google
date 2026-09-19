@@ -76,6 +76,7 @@ fun MultiviewScreen(
     onRemoveChannelFromTile: (Int) -> Unit = {},
     onNavigateLeftPage: () -> Unit = {},
     onNavigateRightPage: () -> Unit = {},
+    onSaveLayout: () -> Unit = {},
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null
 ) {
@@ -718,6 +719,7 @@ fun MultiviewScreen(
             onRemoveChannelFromTile = onRemoveChannelFromTile,
             onSoloTile = onSelectSolo,
             onDismissControls = { showControlsOverlay = false },
+            onSaveLayout = onSaveLayout,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -734,7 +736,8 @@ private fun RenderTile(
     onSelect: () -> Unit,
     onEmptyClick: () -> Unit,
     showInfo: Boolean,
-    showBorder: Boolean = true
+    showBorder: Boolean = true,
+    tileError: String? = null
 ) {
     val channel = channels.getOrNull(tileIndex)
     if (channel == null) {
@@ -779,6 +782,8 @@ private fun RenderTile(
     val airing = airings.find { it.channelId == channel.channelId }
     val player = playerManager.getPlayer(tileIndex)
 
+    val currentRawUrl = playerManager.getCurrentUrl(tileIndex)
+
     TvVideoTile(
         tileIndex = tileIndex,
         channel = channel,
@@ -788,6 +793,8 @@ private fun RenderTile(
         onFocused = onFocus,
         onSelect = onSelect,
         showOverlayInfo = showInfo,
-        showBorder = showBorder
+        showBorder = showBorder,
+        tileError = tileError,
+        rawStreamUrl = currentRawUrl
     )
 }

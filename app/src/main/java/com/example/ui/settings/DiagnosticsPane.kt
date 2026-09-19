@@ -219,6 +219,23 @@ fun NetworkLogItem(entry: NetworkLogEntry) {
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
+
+                    // Token Prefix Badge
+                    if (entry.tokenPrefix != "N/A") {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0x3300D2B4),
+                            border = BorderStroke(1.dp, TabloTeal.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "Token: ${entry.tokenPrefix}",
+                                color = TabloTeal,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
 
                 // Timestamp
@@ -242,6 +259,26 @@ fun NetworkLogItem(entry: NetworkLogEntry) {
                 maxLines = 2
             )
 
+            if (entry.requestHeaderNames.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Request Headers Sent: ${entry.requestHeaderNames}",
+                    color = TextMuted,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            if (entry.responseHeaders.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Response Headers:\n${entry.responseHeaders}",
+                    color = Color(0xFFFFA726),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
             if (entry.responseExcerpt.isNotBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Box(
@@ -255,7 +292,7 @@ fun NetworkLogItem(entry: NetworkLogEntry) {
                         color = Color(0xFFB0BEC5),
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        maxLines = 4
+                        maxLines = 6
                     )
                 }
             }

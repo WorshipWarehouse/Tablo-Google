@@ -13,6 +13,9 @@ data class NetworkLogEntry(
     val method: String,
     val url: String,
     val status: String,
+    val tokenPrefix: String,
+    val requestHeaderNames: String,
+    val responseHeaders: String,
     val responseExcerpt: String
 )
 
@@ -22,11 +25,19 @@ object NetworkDiagnosticsLogger {
     private const val MAX_LOGS = 100
 
     @Synchronized
-    fun log(method: String, url: String, status: String, responseBody: String) {
-        val sdf = SimpleDateFormat("HH:mm:ss", Locale.US)
+    fun log(
+        method: String,
+        url: String,
+        status: String,
+        tokenPrefix: String = "N/A",
+        requestHeaderNames: String = "",
+        responseHeaders: String = "",
+        responseBody: String = ""
+    ) {
+        val sdf = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
         val timeStr = sdf.format(Date())
         val redactedUrl = redactSensitiveData(url)
-        val redactedBody = redactSensitiveData(responseBody).take(200)
+        val redactedBody = redactSensitiveData(responseBody).take(300)
 
         val entry = NetworkLogEntry(
             id = nextId++,
@@ -34,6 +45,9 @@ object NetworkDiagnosticsLogger {
             method = method.uppercase(Locale.US),
             url = redactedUrl,
             status = status,
+            tokenPrefix = tokenPrefix,
+            requestHeaderNames = requestHeaderNames,
+            responseHeaders = responseHeaders,
             responseExcerpt = redactedBody
         )
 
@@ -78,6 +92,24 @@ class DiagnosticsInterceptor : Interceptor {
         val request = chain.request()
         val method = request.method
         val urlStr = request.url.toString()
+        val requestHeaderNames = request.headers.names().joinToString(", ")
+
+        // Extract session token prefix from URL query or path
+        var tokenPrefix = "N/A"
+        val queryStr = request.url.query
+        if (!queryStr.isNullOrEmpty()) {
+            val tokenMatch = Regex("""(?i)(?:token=|^|\?|&)([a-zA-Z0-9]{4,})""").find(queryStr)
+            if (tokenMatch != null) {
+                tokenPrefix = tokenMatch.groupValues[1].take(4)
+            }
+        }
+        if (tokenPrefix == "N/A") {
+            val path = request.url.encodedPath
+            val sessionMatch = Regex("""/player/sessions/([a-zA-Z0-9]{4,})""").find(path)
+            if (sessionMatch != null) {
+                tokenPrefix = sessionMatch.groupValues[1].take(4)
+            }
+        }
 
         val response: Response
         try {
@@ -87,6 +119,9 @@ class DiagnosticsInterceptor : Interceptor {
                 method = method,
                 url = urlStr,
                 status = "Failed: ${e.message ?: "Network error"}",
+                tokenPrefix = tokenPrefix,
+                requestHeaderNames = requestHeaderNames,
+                responseHeaders = "",
                 responseBody = ""
             )
             throw e
@@ -95,6 +130,10 @@ class DiagnosticsInterceptor : Interceptor {
         val statusCode = response.code
         val statusMessage = response.message.ifBlank { if (statusCode in 200..299) "OK" else "Error" }
         val statusStr = "$statusCode $statusMessage"
+
+        val respHeaderStr = if (statusCode !in 200..299) {
+            response.headers.joinToString("\n") { "${it.first}: ${it.second}" }
+        } else ""
 
         var bodyExcerpt = ""
         try {
@@ -111,6 +150,9 @@ class DiagnosticsInterceptor : Interceptor {
             method = method,
             url = urlStr,
             status = statusStr,
+            tokenPrefix = tokenPrefix,
+            requestHeaderNames = requestHeaderNames,
+            responseHeaders = respHeaderStr,
             responseBody = bodyExcerpt
         )
 

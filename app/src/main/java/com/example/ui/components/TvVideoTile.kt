@@ -29,6 +29,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,9 +75,18 @@ fun TvVideoTile(
     focusRequester: FocusRequester? = null,
     showOverlayInfo: Boolean = true,
     showBorder: Boolean = true,
-    tileError: String? = null
+    tileError: String? = null,
+    rawStreamUrl: String? = null
 ) {
     val context = LocalContext.current
+    var showUnredactedUrl by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showUnredactedUrl) {
+        if (showUnredactedUrl) {
+            kotlinx.coroutines.delay(60000L)
+            showUnredactedUrl = false
+        }
+    }
     val playerError = tileError ?: player?.playerError?.let { error ->
         val errorCodeName = error.errorCodeName
         val causeClass = error.cause?.javaClass?.simpleName ?: ""
@@ -217,6 +233,40 @@ fun TvVideoTile(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
+
+                    if (!rawStreamUrl.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = { showUnredactedUrl = !showUnredactedUrl },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (showUnredactedUrl) Color(0xFF0284C7) else Color(0xFF334155)
+                            ),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (showUnredactedUrl) "Hide Stream URL" else "Show Stream URL",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (showUnredactedUrl) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(
+                                    text = rawStreamUrl,
+                                    color = Color(0xFF38BDF8),
+                                    fontSize = 10.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .background(Color(0xFF020617), RoundedCornerShape(4.dp))
+                                        .padding(8.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -23,8 +23,8 @@ class TabloGen4SigningInterceptor(
         val originalRequest = chain.request()
         val url = originalRequest.url
 
-        // Do not touch HLS streaming segment / playlist requests on port 80 (they use URL token only)
-        if (url.port == 80) {
+        // Do not touch HLS streaming segment / playlist requests on port 80 or paths starting with /stream/ (they use URL token only)
+        if (url.port == 80 || url.encodedPath.startsWith("/stream/")) {
             return chain.proceed(originalRequest)
         }
 

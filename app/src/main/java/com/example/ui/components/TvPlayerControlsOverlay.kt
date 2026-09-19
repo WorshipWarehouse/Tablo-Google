@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Pause
@@ -103,6 +104,7 @@ fun TvPlayerControlsOverlay(
     onRemoveChannelFromTile: (Int) -> Unit,
     onSoloTile: (Int) -> Unit,
     onDismissControls: () -> Unit,
+    onSaveLayout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showMultiviewDrawer by remember { mutableStateOf(false) }
@@ -323,6 +325,14 @@ fun TvPlayerControlsOverlay(
                         label = "TV Guide",
                         testTag = "btn_tv_guide",
                         onClick = onOpenGuide
+                    )
+
+                    // 4.5. SAVE LAYOUT BUTTON
+                    PlayerControlButton(
+                        icon = Icons.Default.Save,
+                        label = "Save Layout",
+                        testTag = "btn_save_layout",
+                        onClick = onSaveLayout
                     )
 
                     // 5. SOLO VIEW BUTTON (if currently in multiview)

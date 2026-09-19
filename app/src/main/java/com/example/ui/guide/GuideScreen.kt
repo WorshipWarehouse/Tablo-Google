@@ -115,6 +115,8 @@ fun GuideScreen(
     onNavigateRightPage: () -> Unit = {},
     focusedEpgTimeMs: Long = System.currentTimeMillis(),
     onUpdateFocusedEpgTime: (Long) -> Unit = {},
+    favoriteChannelIds: Set<String> = emptySet(),
+    onToggleFavorite: (TabloChannel) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val windowStart = remember { GuideTiming.windowStartMs() }
@@ -134,7 +136,6 @@ fun GuideScreen(
     var selectedFormat by remember { mutableStateOf(GuideViewFormat.GRID) }
     var selectedCategory by remember { mutableStateOf(ChannelFilterCategory.ALL) }
     var searchQuery by remember { mutableStateOf("") }
-    var favoriteChannelIds by remember { mutableStateOf(setOf<String>()) }
     var scheduledRecordingIds by remember { mutableStateOf(setOf<String>()) }
     var programDetailsDialog by remember { mutableStateOf<Pair<TabloChannel, TabloAiring>?>(null) }
 
@@ -418,13 +419,7 @@ fun GuideScreen(
                                 onShowDetails = { ch, airing ->
                                     programDetailsDialog = Pair(ch, airing)
                                 },
-                                onToggleFavorite = { ch ->
-                                    favoriteChannelIds = if (favoriteChannelIds.contains(ch.channelId)) {
-                                        favoriteChannelIds - ch.channelId
-                                    } else {
-                                        favoriteChannelIds + ch.channelId
-                                    }
-                                },
+                                onToggleFavorite = onToggleFavorite,
                                 onRequestCategoryNav = {
                                     filterFocusRequesters[selectedCategory]?.safeRequest()
                                 },
@@ -470,13 +465,7 @@ fun GuideScreen(
                                 onShowDetails = { ch, airing ->
                                     programDetailsDialog = Pair(ch, airing)
                                 },
-                                onToggleFavorite = { ch ->
-                                    favoriteChannelIds = if (favoriteChannelIds.contains(ch.channelId)) {
-                                        favoriteChannelIds - ch.channelId
-                                    } else {
-                                        favoriteChannelIds + ch.channelId
-                                    }
-                                },
+                                onToggleFavorite = onToggleFavorite,
                                 onRequestCategoryNav = {
                                     filterFocusRequesters[selectedCategory]?.safeRequest()
                                 },
@@ -491,13 +480,7 @@ fun GuideScreen(
                                 favoriteChannelIds = favoriteChannelIds,
                                 firstItemFocusRequester = firstContentFocusRequester,
                                 onWatchChannel = onWatchChannel,
-                                onToggleFavorite = { ch ->
-                                    favoriteChannelIds = if (favoriteChannelIds.contains(ch.channelId)) {
-                                        favoriteChannelIds - ch.channelId
-                                    } else {
-                                        favoriteChannelIds + ch.channelId
-                                    }
-                                },
+                                onToggleFavorite = onToggleFavorite,
                                 onRequestCategoryNav = {
                                     filterFocusRequesters[selectedCategory]?.safeRequest()
                                 },

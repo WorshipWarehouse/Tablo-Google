@@ -6,13 +6,14 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [SavedMultiviewEntity::class, TabloDeviceEntity::class],
-    version = 3,
+    entities = [SavedMultiviewEntity::class, TabloDeviceEntity::class, FavoriteChannelEntity::class],
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun savedMultiviewDao(): SavedMultiviewDao
     abstract fun tabloDeviceDao(): TabloDeviceDao
+    abstract fun favoriteChannelDao(): FavoriteChannelDao
 
     companion object {
         @Volatile

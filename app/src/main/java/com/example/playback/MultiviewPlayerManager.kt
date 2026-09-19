@@ -305,6 +305,8 @@ class MultiviewPlayerManager(
         }
     }
 
+    fun getCurrentUrl(tileIndex: Int): String? = currentUrls[tileIndex]
+
     fun releaseAll() {
         players.values.forEach { it.release() }
         players.clear()

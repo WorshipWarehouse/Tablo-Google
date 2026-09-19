@@ -49,6 +49,7 @@ fun TabloTvApp(
     val isLoadingChannels by viewModel.isLoadingChannels.collectAsState()
     val isLoadingGuide by viewModel.isLoadingGuide.collectAsState()
     val focusedEpgTimeMs by viewModel.focusedEpgTimeMs.collectAsState()
+    val favoriteChannelIds by viewModel.favoriteChannelIds.collectAsState()
 
     var showSettingsHub by remember { mutableStateOf(false) }
     var showQuickSaveDialog by remember { mutableStateOf(false) }
@@ -108,6 +109,10 @@ fun TabloTvApp(
                             onRemoveChannelFromTile = { viewModel.removeChannelFromTile(it) },
                             onNavigateLeftPage = { viewModel.setSection(TvScreenSection.GUIDE) },
                             onNavigateRightPage = { viewModel.setSection(TvScreenSection.GUIDE) },
+                            onSaveLayout = {
+                                val timestampStr = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                                viewModel.saveCurrentMultiview("Saved Layout ($timestampStr)")
+                            },
                             modifier = Modifier.fillMaxSize(),
                             focusRequester = playerFocusRequester
                         )
@@ -141,6 +146,8 @@ fun TabloTvApp(
                             },
                             onNavigateLeftPage = { /* Single primary page */ },
                             onNavigateRightPage = { /* Single primary page */ },
+                            favoriteChannelIds = favoriteChannelIds,
+                            onToggleFavorite = { viewModel.toggleFavoriteChannel(it) },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
