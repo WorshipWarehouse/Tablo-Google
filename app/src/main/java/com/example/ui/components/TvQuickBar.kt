@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.ViewStream
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -58,6 +59,8 @@ import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.TvFocusHighlight
+import com.example.ui.util.safeRequest
+import kotlinx.coroutines.delay
 
 enum class TvScreenSection(val label: String, val icon: ImageVector) {
     MULTIVIEW("Multiview", Icons.Default.GridView),
@@ -92,6 +95,13 @@ fun TvQuickBar(
     onNavigateDown: (TvScreenSection) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    LaunchedEffect(visible) {
+        if (visible) {
+            delay(60)
+            navFocusRequesters[currentSection]?.safeRequest()
+        }
+    }
+
     AnimatedVisibility(
         visible = visible,
         enter = slideInVertically(initialOffsetY = { -it }),
@@ -156,8 +166,8 @@ fun TvQuickBar(
                                 onClick = { onSelectSection(section) },
                                 focusRequester = navFocusRequesters[section],
                                 onKeyDown = { onNavigateDown(section) },
-                                onKeyLeft = prev?.let { p -> { navFocusRequesters[p]?.requestFocus() } },
-                                onKeyRight = next?.let { n -> { navFocusRequesters[n]?.requestFocus() } }
+                                onKeyLeft = prev?.let { p -> { navFocusRequesters[p]?.safeRequest() } },
+                                onKeyRight = next?.let { n -> { navFocusRequesters[n]?.safeRequest() } }
                             )
                         }
                     }

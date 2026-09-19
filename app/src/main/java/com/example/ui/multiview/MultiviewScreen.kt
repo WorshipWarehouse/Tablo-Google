@@ -9,6 +9,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -429,7 +430,10 @@ private fun RenderTile(
                 .fillMaxSize()
                 .background(TvSurface)
                 .border(borderStroke, RoundedCornerShape(4.dp))
-                .focusable(),
+                .clickable {
+                    onFocus()
+                    onSelect()
+                },
             contentAlignment = Alignment.Center
         ) {
             Column(

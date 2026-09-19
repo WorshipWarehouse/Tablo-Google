@@ -72,4 +72,10 @@ interface TabloApiService {
     suspend fun getAssociationServerInfo(
         @Url url: String = "https://api.tablotv.com/assocserver/getipinfo/"
     ): TabloAssocInfoResponse
+
+    @POST
+    suspend fun loginTabloCloud(
+        @Url url: String,
+        @Body body: TabloCloudLoginRequest
+    ): TabloCloudLoginResponse
 }

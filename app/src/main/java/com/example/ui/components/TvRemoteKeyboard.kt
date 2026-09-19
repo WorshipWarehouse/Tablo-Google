@@ -41,65 +41,125 @@ import com.example.ui.theme.TvFocusHighlight
 import com.example.ui.theme.TvSurface
 import com.example.ui.theme.TvSurfaceElevated
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
 @Composable
 fun TvRemoteKeyboard(
     onKeyPress: (String) -> Unit,
     onBackspace: () -> Unit,
     onClear: () -> Unit,
+    onDone: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val row1 = listOf("A", "B", "C", "D", "E", "F")
-    val row2 = listOf("G", "H", "I", "J", "K", "L")
-    val row3 = listOf("M", "N", "O", "P", "Q", "R")
-    val row4 = listOf("S", "T", "U", "V", "W", "X")
-    val row5 = listOf("Y", "Z", "1", "2", "3", "4")
-    val row6 = listOf("5", "6", "7", "8", "9", "0")
+    var isShifted by remember { mutableStateOf(false) }
+
+    val digitsRow = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
+    val lettersRow1 = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
+    val lettersRow2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l", "@")
+    val lettersRow3 = listOf("z", "x", "c", "v", "b", "n", "m", ".", "-", "_")
 
     Column(
         modifier = modifier
             .background(Color(0xE6101726), RoundedCornerShape(12.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        listOf(row1, row2, row3, row4, row5, row6).forEach { row ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                row.forEach { char ->
-                    TvKeyButton(
-                        text = char,
-                        onClick = { onKeyPress(char) },
-                        modifier = Modifier.size(46.dp)
-                    )
-                }
+        // Digits
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            digitsRow.forEach { char ->
+                TvKeyButton(
+                    text = char,
+                    onClick = { onKeyPress(char) },
+                    modifier = Modifier.size(38.dp)
+                )
             }
         }
 
-        // Action Keys Row: Space, Backspace, Clear
+        // QWERTY Row 1
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            lettersRow1.forEach { char ->
+                val displayChar = if (isShifted) char.uppercase() else char
+                TvKeyButton(
+                    text = displayChar,
+                    onClick = { onKeyPress(displayChar) },
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+        }
+
+        // QWERTY Row 2
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            lettersRow2.forEach { char ->
+                val displayChar = if (isShifted && char.length == 1 && char[0].isLetter()) char.uppercase() else char
+                TvKeyButton(
+                    text = displayChar,
+                    onClick = { onKeyPress(displayChar) },
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+        }
+
+        // QWERTY Row 3
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            lettersRow3.forEach { char ->
+                val displayChar = if (isShifted && char.length == 1 && char[0].isLetter()) char.uppercase() else char
+                TvKeyButton(
+                    text = displayChar,
+                    onClick = { onKeyPress(displayChar) },
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+        }
+
+        // Bottom Action Keys Row
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
             TvKeyButton(
+                text = if (isShifted) "a-z" else "A-Z",
+                onClick = { isShifted = !isShifted },
+                modifier = Modifier.weight(1f).height(40.dp)
+            )
+            TvKeyButton(
                 text = "SPACE",
                 icon = Icons.Default.SpaceBar,
                 onClick = { onKeyPress(" ") },
-                modifier = Modifier.weight(1.3f).height(46.dp)
+                modifier = Modifier.weight(1.8f).height(40.dp)
             )
             TvKeyButton(
                 text = "DEL",
                 icon = Icons.Default.Backspace,
                 onClick = onBackspace,
-                modifier = Modifier.weight(1f).height(46.dp)
+                modifier = Modifier.weight(1.2f).height(40.dp)
             )
             TvKeyButton(
                 text = "CLEAR",
                 icon = Icons.Default.Clear,
                 onClick = onClear,
-                modifier = Modifier.weight(1f).height(46.dp)
+                modifier = Modifier.weight(1.2f).height(40.dp)
             )
+            if (onDone != null) {
+                TvKeyButton(
+                    text = "ENTER",
+                    onClick = onDone,
+                    modifier = Modifier.weight(1.4f).height(40.dp)
+                )
+            }
         }
     }
 }

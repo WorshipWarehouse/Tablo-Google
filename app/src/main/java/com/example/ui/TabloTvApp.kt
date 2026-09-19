@@ -31,6 +31,7 @@ import com.example.ui.saved.SaveMultiviewNameDialog
 import com.example.ui.saved.SavedMultiviewsScreen
 import com.example.ui.search.SearchScreen
 import com.example.ui.theme.TvBackground
+import com.example.ui.util.safeRequest
 
 @Composable
 fun TabloTvApp(
@@ -47,6 +48,8 @@ fun TabloTvApp(
     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
     val isConnecting by viewModel.isConnecting.collectAsState()
+    val isLoggingIn by viewModel.isLoggingIn.collectAsState()
+    val loginError by viewModel.loginError.collectAsState()
     val connectionError by viewModel.connectionError.collectAsState()
     val savedMultiviews by viewModel.savedMultiviews.collectAsState()
 
@@ -90,7 +93,7 @@ fun TabloTvApp(
                 onRequestQuickBar = { fromLeft ->
                     viewModel.showQuickBar()
                     val target = if (fromLeft) TvScreenSection.MULTIVIEW else TvScreenSection.SEARCH
-                    navFocusRequesters[target]?.requestFocus()
+                    navFocusRequesters[target]?.safeRequest()
                 },
                 modifier = Modifier.fillMaxSize(),
                 focusRequester = contentFocusRequester
@@ -113,7 +116,7 @@ fun TabloTvApp(
                         else -> 1
                     }
                     viewModel.setFocusedTile(targetTile)
-                    contentFocusRequester.requestFocus()
+                    contentFocusRequester.safeRequest()
                 },
                 modifier = Modifier.align(Alignment.TopCenter)
             )
@@ -130,7 +133,7 @@ fun TabloTvApp(
                     onSaveCurrentMultiview = { showQuickSaveDialog = true },
                     navFocusRequesters = navFocusRequesters,
                     onNavigateDown = {
-                        contentFocusRequester.requestFocus()
+                        contentFocusRequester.safeRequest()
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -157,7 +160,7 @@ fun TabloTvApp(
                                     onAssignToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
                                     onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
                                     onRequestTopNav = {
-                                        navFocusRequesters[TvScreenSection.GUIDE]?.requestFocus()
+                                        navFocusRequesters[TvScreenSection.GUIDE]?.safeRequest()
                                     },
                                     modifier = Modifier.fillMaxSize()
                                 )
@@ -170,7 +173,7 @@ fun TabloTvApp(
                                     onSelectChannel = { viewModel.tuneChannelFullscreen(it) },
                                     onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
                                     onRequestTopNav = {
-                                        navFocusRequesters[TvScreenSection.SEARCH]?.requestFocus()
+                                        navFocusRequesters[TvScreenSection.SEARCH]?.safeRequest()
                                     },
                                     modifier = Modifier.fillMaxSize()
                                 )
@@ -187,7 +190,7 @@ fun TabloTvApp(
                                     onDeleteMultiview = { id -> viewModel.deleteSavedMultiview(id) },
                                     onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
                                     onRequestTopNav = {
-                                        navFocusRequesters[TvScreenSection.SAVED]?.requestFocus()
+                                        navFocusRequesters[TvScreenSection.SAVED]?.safeRequest()
                                     },
                                     modifier = Modifier.fillMaxSize()
                                 )
@@ -199,10 +202,13 @@ fun TabloTvApp(
                                     discoveredDevices = discoveredDevices,
                                     isScanning = isScanning,
                                     isConnecting = isConnecting,
+                                    isLoggingIn = isLoggingIn,
                                     connectionError = connectionError,
+                                    loginError = loginError,
                                     onStartScan = { viewModel.startDiscovery() },
                                     onSelectDevice = { viewModel.selectDevice(it) },
-                                    onManualConnect = { viewModel.connectDirectIp(it) },
+                                    onManualConnect = { ip, port -> viewModel.connectDirectIp(ip, port) },
+                                    onLoginAccount = { email, pass -> viewModel.loginTabloAccount(email, pass) },
                                     onDisconnect = { viewModel.disconnect() },
                                     onBack = {
                                         if (tabloDevice != null) {
@@ -210,7 +216,7 @@ fun TabloTvApp(
                                         }
                                     },
                                     onRequestTopNav = {
-                                        navFocusRequesters[TvScreenSection.TABLO]?.requestFocus()
+                                        navFocusRequesters[TvScreenSection.TABLO]?.safeRequest()
                                     },
                                     modifier = Modifier.fillMaxSize()
                                 )

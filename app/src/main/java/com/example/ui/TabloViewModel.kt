@@ -74,6 +74,12 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
     private val _isConnecting = MutableStateFlow(false)
     val isConnecting: StateFlow<Boolean> = _isConnecting.asStateFlow()
 
+    private val _isLoggingIn = MutableStateFlow(false)
+    val isLoggingIn: StateFlow<Boolean> = _isLoggingIn.asStateFlow()
+
+    private val _loginError = MutableStateFlow<String?>(null)
+    val loginError: StateFlow<String?> = _loginError.asStateFlow()
+
     private val _isLoadingChannels = MutableStateFlow(false)
     val isLoadingChannels: StateFlow<Boolean> = _isLoadingChannels.asStateFlow()
 
@@ -357,15 +363,42 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun connectDirectIp(ip: String) {
+    fun loginTabloAccount(email: String, password: String) {
+        viewModelScope.launch {
+            _isLoggingIn.value = true
+            _loginError.value = null
+            _connectionError.value = null
+            try {
+                when (val result = tabloRepository.loginTabloAccount(email, password)) {
+                    is TabloResult.Success -> {
+                        val devices = result.data
+                        _discoveredDevices.value = devices
+                        if (devices.size == 1) {
+                            selectDevice(devices.first())
+                        }
+                    }
+                    is TabloResult.Error -> {
+                        _loginError.value = result.message
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("TabloViewModel", "Login error: ${e.message}")
+                _loginError.value = e.message ?: "Login failed. Please check network connection."
+            } finally {
+                _isLoggingIn.value = false
+            }
+        }
+    }
+
+    fun connectDirectIp(ip: String, port: Int = 8885) {
         viewModelScope.launch {
             lastManualIp = ip.trim()
             _isConnecting.value = true
             _connectionError.value = null
-            val device = tabloRepository.fetchServerInfo(ip.trim())
+            val device = tabloRepository.fetchServerInfo(ip.trim(), port)
             _isConnecting.value = false
             if (device == null) {
-                _connectionError.value = "Tablo not found at ${ip.trim()}. Check the IP and make sure the device is powered on."
+                _connectionError.value = "Tablo not found at ${ip.trim()}:$port. Check the IP and make sure the device is powered on."
             } else {
                 selectDevice(device)
             }

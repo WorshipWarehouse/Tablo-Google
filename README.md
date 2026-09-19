@@ -20,9 +20,10 @@ Inspired by the YouTube TV multiview experience, this application lets you monit
   - Quick-tune directly into any channel from the guide.
 
 - **Tablo Device Discovery & Connectivity**:
-  - Automatic local network discovery for Tablo DUAL, QUAD, and 4th Gen DVRs via UDP broadcast and the Tablo Association API (`api.tablotv.com`).
-  - Manual IP address direct connection for custom subnets.
-  - All channels, guide listings, search results, and streams come from the connected device — no demo or placeholder content.
+  - **Tablo Account Cloud Sign-In**: Dedicated login screen supporting Tablo cloud authentication (per the official Tablo API documentation) to find and link registered 4th Gen and cloud-associated units.
+  - **Automatic Local Network Discovery**: Discovers Tablo DUAL, QUAD, and Legacy units broadcasting on ports 8881/8885 via UDP and Tablo Association server lookup.
+  - **Direct IP Address & Port Selection**: Connect directly by entering the device's local IP (supports ports 8885 and 8881) with an integrated on-screen TV remote keyboard.
+  - All channels, guide listings, search results, and live streams are fetched directly from your active Tablo device.
 
 - **TV-First 10-Foot UI**:
   - Designed specifically for Android TV, Google TV, and Amazon Fire TV remotes.

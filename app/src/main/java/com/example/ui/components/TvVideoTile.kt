@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,12 +81,10 @@ fun TvVideoTile(
         .fillMaxSize()
         .clip(RoundedCornerShape(4.dp))
         .border(borderStroke, RoundedCornerShape(4.dp))
-        .onFocusChanged { focusState ->
-            if (focusState.isFocused) {
-                onFocused()
-            }
+        .clickable {
+            onFocused()
+            onSelect()
         }
-        .focusable()
 
     val combinedModifier = if (focusRequester != null) {
         baseModifier.focusRequester(focusRequester)

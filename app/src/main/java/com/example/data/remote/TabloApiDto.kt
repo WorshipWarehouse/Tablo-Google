@@ -160,3 +160,33 @@ data class TabloGuideStatusResponse(
     @Json(name = "last_update") val lastUpdate: String? = null,
     @Json(name = "limit") val limit: String? = null
 )
+
+@JsonClass(generateAdapter = true)
+data class TabloCloudLoginRequest(
+    @Json(name = "email") val email: String,
+    @Json(name = "password") val password: String
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloCloudLoginResponse(
+    @Json(name = "token") val token: String? = null,
+    @Json(name = "user_id") val userId: String? = null,
+    @Json(name = "devices") val devices: List<TabloCloudDevice>? = null,
+    @Json(name = "error") val error: String? = null,
+    @Json(name = "message") val message: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloCloudDevice(
+    @Json(name = "server_id") val serverId: String? = null,
+    @Json(name = "serverid") val serverid: String? = null,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "model") val model: String? = null,
+    @Json(name = "board_type") val boardType: String? = null,
+    @Json(name = "private_ip") val privateIp: String? = null,
+    @Json(name = "public_ip") val publicIp: String? = null,
+    @Json(name = "http_port") val httpPort: Int? = null,
+    @Json(name = "ssl_port") val sslPort: Int? = null,
+    @Json(name = "device_token") val deviceToken: String? = null,
+    @Json(name = "server_version") val serverVersion: String? = null
+)

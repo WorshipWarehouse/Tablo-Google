@@ -3,6 +3,8 @@ package com.example.data
 import android.util.Log
 import com.example.data.remote.TabloApiMapper
 import com.example.data.remote.TabloApiService
+import com.example.data.remote.TabloCloudLoginRequest
+import com.example.data.remote.TabloCloudLoginResponse
 import com.example.data.remote.TabloDiscoveryManager
 import com.example.model.TabloAiring
 import com.example.model.TabloChannel
@@ -54,27 +56,82 @@ class TabloRepository(
     }
 
     suspend fun fetchServerInfo(host: String, port: Int = 8885): TabloDevice? = withContext(Dispatchers.IO) {
-        val url = "http://$host:$port/server/info"
+        val portsToTry = if (port == 8885) listOf(8885, 8881) else listOf(port, 8885, 8881).distinct()
+        for (p in portsToTry) {
+            val url = "http://$host:$p/server/info"
+            try {
+                val response = apiService.getServerInfo(url)
+                val model = response.model
+                return@withContext TabloDevice(
+                    serverId = response.serverId ?: "tablo-$host",
+                    name = response.name?.ifBlank { null } ?: model?.name?.ifBlank { null } ?: "Tablo ($host)",
+                    model = model?.name ?: model?.type ?: "Tablo",
+                    host = host,
+                    port = p,
+                    streamingPort = 80,
+                    tunerCount = model?.tuners ?: 4,
+                    activeTuners = 0,
+                    isConnected = true,
+                    firmware = response.version ?: ""
+                )
+            } catch (e: Exception) {
+                Log.d("TabloRepository", "fetchServerInfo failed on port $p for $host: ${e.message}")
+            }
+        }
+        null
+    }
+
+    suspend fun loginTabloAccount(email: String, password: String): TabloResult<List<TabloDevice>> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService.getServerInfo(url)
-            val model = response.model
-            TabloDevice(
-                serverId = response.serverId ?: "tablo-$host",
-                name = response.name?.ifBlank { null } ?: model?.name?.ifBlank { null } ?: "Tablo ($host)",
-                model = model?.name ?: model?.type ?: "Tablo",
-                host = host,
-                port = port,
-                streamingPort = 80,
-                tunerCount = model?.tuners ?: 4,
-                activeTuners = 0,
-                isConnected = true,
-                firmware = response.version ?: ""
-            )
+            val request = TabloCloudLoginRequest(email = email.trim(), password = password)
+            var response: TabloCloudLoginResponse? = null
+            try {
+                response = apiService.loginTabloCloud("https://lighthousetv.ewscloud.com/api/v2/login/", request)
+            } catch (e: Exception) {
+                Log.d("TabloRepository", "Lighthouse login failed, trying secondary endpoint: ${e.message}")
+                try {
+                    response = apiService.loginTabloCloud("https://api.tablotv.com/account/login", request)
+                } catch (e2: Exception) {
+                    Log.d("TabloRepository", "Secondary login endpoint failed: ${e2.message}")
+                }
+            }
+
+            if (response != null && !response.devices.isNullOrEmpty()) {
+                val devices = response.devices.mapNotNull { cloudDev ->
+                    val host = cloudDev.privateIp ?: cloudDev.publicIp ?: return@mapNotNull null
+                    val port = cloudDev.httpPort ?: 8885
+                    fetchServerInfo(host, port) ?: TabloDevice(
+                        serverId = cloudDev.serverId ?: cloudDev.serverid ?: "tablo-$host",
+                        name = cloudDev.name?.ifBlank { null } ?: "Tablo ($host)",
+                        model = cloudDev.model ?: cloudDev.boardType ?: "Tablo",
+                        host = host,
+                        port = port,
+                        streamingPort = 80,
+                        tunerCount = 4,
+                        activeTuners = 0,
+                        isConnected = false,
+                        firmware = cloudDev.serverVersion ?: ""
+                    )
+                }
+                if (devices.isNotEmpty()) {
+                    return@withContext TabloResult.Success(devices)
+                }
+            }
+
+            // Also check hosted association info for any devices linked to this user's network
+            val assocDevices = discoveryManager.discoverTablos()
+            if (assocDevices.isNotEmpty()) {
+                TabloResult.Success(assocDevices)
+            } else if (response?.error != null) {
+                TabloResult.Error("Login failed: ${response.error}")
+            } else {
+                TabloResult.Error("No Tablo devices found under this account. Please verify your credentials or ensure your Tablo is powered on.")
+            }
         } catch (e: Exception) {
-            Log.d("TabloRepository", "fetchServerInfo failed for $host: ${e.message}")
-            null
+            TabloResult.Error("Failed to sign in to Tablo account: ${e.message ?: "Connection error"}")
         }
     }
+
 
     suspend fun fetchGuideStatus(device: TabloDevice): Boolean? = withContext(Dispatchers.IO) {
         try {

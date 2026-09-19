@@ -62,12 +62,14 @@ class TabloDiscoveryManager(
                 assoc.cpes?.forEach { cpe ->
                     val host = cpe.privateIp?.trim().orEmpty()
                     if (host.isEmpty()) return@forEach
-                    val verified = verifyServerInfo(host)
+                    val preferredPort = cpe.http ?: 8885
+                    val verified = verifyServerInfo(host, preferredPort)
                     byHost[host] = verified ?: TabloDevice(
                         serverId = cpe.serverId ?: "tablo-$host",
                         name = cpe.name?.ifBlank { null } ?: cpe.host?.ifBlank { null } ?: "Tablo ($host)",
                         model = cpe.board ?: "Tablo",
                         host = host,
+                        port = preferredPort,
                         tunerCount = 4,
                         isConnected = false,
                         firmware = cpe.serverVersion ?: ""
@@ -90,26 +92,29 @@ class TabloDiscoveryManager(
         byHost.values.toList()
     }
 
-    private suspend fun verifyServerInfo(host: String): TabloDevice? {
-        return try {
-            val response = apiService.getServerInfo("http://$host:8885/server/info")
-            val model = response.model
-            TabloDevice(
-                serverId = response.serverId ?: "tablo-$host",
-                name = response.name?.ifBlank { null } ?: model?.name?.ifBlank { null } ?: "Tablo ($host)",
-                model = model?.name ?: model?.type ?: "Tablo",
-                host = host,
-                port = 8885,
-                streamingPort = 80,
-                tunerCount = model?.tuners ?: 4,
-                activeTuners = 0,
-                isConnected = true,
-                firmware = response.version ?: ""
-            )
-        } catch (e: Exception) {
-            Log.d("TabloDiscoveryManager", "Server info verification failed for $host: ${e.message}")
-            null
+    private suspend fun verifyServerInfo(host: String, preferredPort: Int = 8885): TabloDevice? {
+        val ports = listOf(preferredPort, 8885, 8881).distinct()
+        for (p in ports) {
+            try {
+                val response = apiService.getServerInfo("http://$host:$p/server/info")
+                val model = response.model
+                return TabloDevice(
+                    serverId = response.serverId ?: "tablo-$host",
+                    name = response.name?.ifBlank { null } ?: model?.name?.ifBlank { null } ?: "Tablo ($host)",
+                    model = model?.name ?: model?.type ?: "Tablo",
+                    host = host,
+                    port = p,
+                    streamingPort = 80,
+                    tunerCount = model?.tuners ?: 4,
+                    activeTuners = 0,
+                    isConnected = true,
+                    firmware = response.version ?: ""
+                )
+            } catch (e: Exception) {
+                Log.d("TabloDiscoveryManager", "Server info verification failed for $host on port $p: ${e.message}")
+            }
         }
+        return null
     }
 
     private suspend fun discoverViaUdp(): List<TabloDevice> {
