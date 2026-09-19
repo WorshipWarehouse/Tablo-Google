@@ -513,8 +513,10 @@ class TabloRepository(
      */
     suspend fun fetchWatchStreamSession(device: TabloDevice, channel: TabloChannel, tileIndex: Int = -1): WatchSessionResult? =
         withContext(Dispatchers.IO) {
-            val channelIdentifier = channel.identifier?.substringAfterLast("/")
-                ?: channel.channelPath.substringAfterLast("/")
+            // Gen 4 identifiers are opaque.  Do not trim path-like identifiers: the
+            // exact identifier is both part of the endpoint and the signed HMAC path.
+            val channelIdentifier = channel.identifier
+                ?: channel.channelPath.substringAfter("/guide/channels/")
                 ?: channel.channelId
 
             // 1. Tablo Gen 4 HMAC-MD5 signed watch flow
@@ -523,16 +525,15 @@ class TabloRepository(
                 val watchUrl = "${device.localBaseUrl}$path"
                 val bodyStr = TabloGen4Auth.makeWatchBody(device.clientId)
                 val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("POST", path, bodyStr)
-                val lh = device.lighthouseToken ?: ""
 
                 try {
-                    val reqBody = bodyStr.toRequestBody("application/json; charset=utf-8".toMediaType())
+                    val reqBody = bodyStr.toRequestBody("application/x-www-form-urlencoded".toMediaType())
                     val watchResp = apiService.postGen4Watch(
                         url = watchUrl,
                         userAgent = TabloGen4Auth.USER_AGENT_WATCH,
                         authorization = authHeader,
                         date = dateHeader,
-                        lighthouse = lh,
+                        lighthouse = null,
                         body = reqBody
                     )
 

@@ -315,6 +315,22 @@ class MultiviewPlayerManager(
         }
     }
 
+    /**
+     * Re-key an already playing tile without recreating its player or reloading
+     * its HLS URL.  This is used when the UI compacts tiles after a removal.
+     */
+    fun moveTile(fromTile: Int, toTile: Int) {
+        if (fromTile == toTile) return
+        // The destination must be empty; releasing it here avoids leaking a
+        // decoder if a caller ever violates that contract.
+        releaseTile(toTile)
+        players.remove(fromTile)?.let { players[toTile] = it }
+        currentUrls.remove(fromTile)?.let { currentUrls[toTile] = it }
+        retryCounts.remove(fromTile)?.let { retryCounts[toTile] = it }
+        if (focusedTileIndex == fromTile) focusedTileIndex = toTile
+        setAudioTile(focusedTileIndex)
+    }
+
     fun togglePlayPause(tileIndex: Int): Boolean {
         val player = players[tileIndex] ?: return false
         return if (player.isPlaying) {

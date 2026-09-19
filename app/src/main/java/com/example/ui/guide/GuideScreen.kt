@@ -850,6 +850,9 @@ private fun Tablo4UTimelineGrid(
     val contentWidth = (timelineWidth + CHANNEL_COLUMN_WIDTH.toInt()).dp
 
     val airingFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    // A vertical move selects by the existing anchor; receiving focus must not
+    // replace it with the target show's start time.
+    var preserveAnchorOnNextVerticalFocus by remember { mutableStateOf(false) }
 
     fun getAiringFocusRequester(channelId: String, airingId: String): FocusRequester {
         val key = "${channelId}_${airingId}"
@@ -861,12 +864,10 @@ private fun Tablo4UTimelineGrid(
         if (targetIndex in channels.indices) {
             val targetChannel = channels[targetIndex]
             val targetAirings = channelAiringsMap[targetChannel.channelId].orEmpty()
-            val targetAiring = targetAirings.find {
-                val endMs = it.startTimeMillis + (it.durationSeconds * 1000L)
-                it.startTimeMillis <= focusedEpgTimeMs && endMs > focusedEpgTimeMs
-            } ?: targetAirings.minByOrNull { Math.abs(it.startTimeMillis - focusedEpgTimeMs) }
+            val targetAiring = airingAtAnchor(targetAirings, focusedEpgTimeMs)
 
             if (targetAiring != null) {
+                preserveAnchorOnNextVerticalFocus = true
                 getAiringFocusRequester(targetChannel.channelId, targetAiring.airingId).safeRequest()
             }
         } else if (isUp && currentChannelIndex == 0) {
@@ -995,7 +996,15 @@ private fun Tablo4UTimelineGrid(
                                 scheduledRecordingIds = scheduledRecordingIds,
                                 focusRequester = if (index == 0) firstContentFocusRequester else null,
                                 getAiringFocusRequester = ::getAiringFocusRequester,
-                                onAiringFocused = { airing -> onUpdateFocusedEpgTime(airing.startTimeMillis) },
+                                onAiringFocused = { airing ->
+                                    if (preserveAnchorOnNextVerticalFocus) {
+                                        preserveAnchorOnNextVerticalFocus = false
+                                    } else {
+                                        // Initial focus and horizontal focus use a show's
+                                        // start, except for a show already in progress.
+                                        onUpdateFocusedEpgTime(guideAnchorFor(airing, windowStart))
+                                    }
+                                },
                                 onNavigateUpDown = { channelIdx, isUp -> navigateUpDown(channelIdx, isUp) },
                                 onTune = { onWatchChannel(channel) },
                                 onAiringClick = { airing -> onWatchChannel(channel) },

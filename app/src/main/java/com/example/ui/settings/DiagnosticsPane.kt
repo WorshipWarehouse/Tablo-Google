@@ -240,8 +240,8 @@ fun DiagnosticsPane(
 
                                             // Step 1: POST /watch (signed)
                                             try {
-                                                val channelIdentifier = channel.identifier?.substringAfterLast("/")
-                                                    ?: channel.channelPath.substringAfterLast("/")
+                                                val channelIdentifier = channel.identifier
+                                                    ?: channel.channelPath.substringAfter("/guide/channels/")
                                                     ?: channel.channelId
 
                                                 val path = "/guide/channels/$channelIdentifier/watch"
@@ -249,7 +249,6 @@ fun DiagnosticsPane(
                                                 val isGen4 = device.isGen4 || channel.identifier != null
                                                 val bodyStr = if (isGen4) com.example.data.remote.TabloGen4Auth.makeWatchBody(device.clientId) else ""
                                                 val (authHeader, dateHeader) = if (isGen4) com.example.data.remote.TabloGen4Auth.makeDeviceAuth("POST", path, bodyStr) else Pair("", "")
-                                                val lh = device.lighthouseToken ?: ""
 
                                                 val client = okhttp3.OkHttpClient.Builder()
                                                     .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
@@ -258,13 +257,12 @@ fun DiagnosticsPane(
 
                                                 val reqBuilder = okhttp3.Request.Builder()
                                                     .url(watchUrl)
-                                                    .post(bodyStr.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                                                    .post(bodyStr.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
                                                     .header("User-Agent", com.example.data.remote.TabloGen4Auth.USER_AGENT_WATCH)
 
                                                 if (isGen4) {
                                                     reqBuilder.header("Authorization", authHeader)
                                                     reqBuilder.header("Date", dateHeader)
-                                                    reqBuilder.header("Lighthouse", lh)
                                                 }
 
                                                 client.newCall(reqBuilder.build()).execute().use { response ->
@@ -396,7 +394,6 @@ fun DiagnosticsPane(
                                                     val path = "/player/sessions/$sessionToken"
                                                     val deleteUrl = "${device.localBaseUrl}$path"
                                                     val (authHeader, dateHeader) = com.example.data.remote.TabloGen4Auth.makeDeviceAuth("DELETE", path, "")
-                                                    val lh = device.lighthouseToken ?: ""
 
                                                     val client = okhttp3.OkHttpClient.Builder()
                                                         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
@@ -409,7 +406,6 @@ fun DiagnosticsPane(
                                                         .header("User-Agent", com.example.data.remote.TabloGen4Auth.USER_AGENT_WATCH)
                                                         .header("Authorization", authHeader)
                                                         .header("Date", dateHeader)
-                                                        .header("Lighthouse", lh)
                                                         .build()
 
                                                     client.newCall(request).execute().use { response ->
