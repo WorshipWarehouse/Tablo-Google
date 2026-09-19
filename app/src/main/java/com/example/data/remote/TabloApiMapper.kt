@@ -13,34 +13,54 @@ internal object TabloApiMapper {
     fun channelFromDetail(path: String?, detail: TabloChannelDetailResponse?): TabloChannel? {
         val channel = detail?.channel ?: return null
         val channelPath = if (!path.isNullOrEmpty()) path else detail?.path ?: return null
-        val major = channel.major ?: 1
-        val minor = channel.minor ?: 1
+        val major = channel.major ?: 0
+        val minor = channel.minor ?: 0
+        val callSign = channel.callSign ?: channel.callSignSrc ?: if (major > 0) "Channel $major" else "FAST Stream"
+        val isOtt = channel.source?.equals("ott", ignoreCase = true) == true ||
+                channel.source?.equals("fast", ignoreCase = true) == true ||
+                major == 0
+
+        val network = channel.network?.ifBlank { null }
+            ?: inferNetworkFromCallSign(callSign)
+
         return TabloChannel(
             channelId = channelPath.substringAfterLast("/"),
-            callSign = channel.callSign ?: "Channel $major",
+            callSign = callSign,
             majorNumber = major,
             minorNumber = minor,
-            network = channel.network ?: channel.callSign ?: "OTA",
-            resolution = channel.resolution ?: "",
+            network = network,
+            resolution = channel.resolution ?: if (isOtt) "720p" else "1080i",
             channelPath = channelPath,
-            logoUrl = null
+            logoUrl = null,
+            identifier = channelPath.substringAfterLast("/"),
+            isOtt = isOtt
         )
     }
 
     fun channelFromChannelSchema(detail: TabloAiringDetailResponse?): TabloChannel? {
         val channel = detail?.airingDetails?.channel?.channel ?: return null
         val channelPath = detail.airingDetails?.channelPath ?: detail.airingDetails?.channel?.path ?: return null
-        val major = channel.major ?: 1
-        val minor = channel.minor ?: 1
+        val major = channel.major ?: 0
+        val minor = channel.minor ?: 0
+        val callSign = channel.callSign ?: channel.callSignSrc ?: if (major > 0) "Channel $major" else "FAST Stream"
+        val isOtt = channel.source?.equals("ott", ignoreCase = true) == true ||
+                channel.source?.equals("fast", ignoreCase = true) == true ||
+                major == 0
+
+        val network = channel.network?.ifBlank { null }
+            ?: inferNetworkFromCallSign(callSign)
+
         return TabloChannel(
             channelId = channelPath.substringAfterLast("/"),
-            callSign = channel.callSign ?: "Channel $major",
+            callSign = callSign,
             majorNumber = major,
             minorNumber = minor,
-            network = channel.network ?: channel.callSign ?: "OTA",
-            resolution = channel.resolution ?: "",
+            network = network,
+            resolution = channel.resolution ?: if (isOtt) "720p" else "1080i",
             channelPath = channelPath,
-            logoUrl = null
+            logoUrl = null,
+            identifier = channelPath.substringAfterLast("/"),
+            isOtt = isOtt
         )
     }
 
@@ -68,8 +88,8 @@ internal object TabloApiMapper {
             ?: event?.description
             ?: movie?.plot
             ?: show?.description
-        val category = categoryForPath(airingPath)
-        val rating = movie?.filmRating ?: ""
+        val category = determineCategory(airingPath, detail)
+        val rating = movie?.filmRating ?: movie?.qualityRating?.toString() ?: ""
 
         return TabloAiring(
             airingId = airingPath.substringAfterLast("/"),
@@ -86,12 +106,61 @@ internal object TabloApiMapper {
         )
     }
 
-    private fun categoryForPath(path: String): String {
+    private fun determineCategory(path: String, detail: TabloAiringDetailResponse?): String {
+        if (detail?.sportPath != null || detail?.event != null || "/sports/" in path) {
+            return "Sports"
+        }
+        if (detail?.movie != null || "/movies/" in path) {
+            return "Movies"
+        }
+        val showGenres = detail?.show?.genres.orEmpty()
+        if (detail?.seriesPath != null || detail?.seasonPath != null || detail?.episode != null || "/series/" in path) {
+            return when {
+                showGenres.any { it.contains("News", ignoreCase = true) } -> "News"
+                showGenres.any { it.contains("Comedy", ignoreCase = true) } -> "Comedy"
+                showGenres.any { it.contains("Kids", ignoreCase = true) || it.contains("Animation", ignoreCase = true) } -> "Kids"
+                else -> "Series"
+            }
+        }
+        for (g in showGenres) {
+            when {
+                g.contains("Sport", ignoreCase = true) -> return "Sports"
+                g.contains("News", ignoreCase = true) || g.contains("Weather", ignoreCase = true) -> return "News"
+                g.contains("Movie", ignoreCase = true) || g.contains("Cinema", ignoreCase = true) -> return "Movies"
+                g.contains("Comedy", ignoreCase = true) -> return "Comedy"
+                g.contains("Drama", ignoreCase = true) -> return "Drama"
+                g.contains("Doc", ignoreCase = true) -> return "Documentary"
+            }
+        }
+        val titleUpper = (detail?.airingDetails?.showTitle ?: detail?.show?.title ?: "").uppercase()
         return when {
-            "/movies/" in path -> "Movies"
-            "/sports/" in path -> "Sports"
-            "/series/" in path -> "Series"
+            titleUpper.contains("NEWS") || titleUpper.contains("WEATHER") || titleUpper.contains("REPORT") -> "News"
+            titleUpper.contains("SPORT") || titleUpper.contains("FOOTBALL") || titleUpper.contains("BASKETBALL") || titleUpper.contains("GOLF") -> "Sports"
             else -> "Program"
+        }
+    }
+
+    private fun inferNetworkFromCallSign(callSign: String): String {
+        val upper = callSign.uppercase()
+        return when {
+            upper.contains("ABC") -> "ABC"
+            upper.contains("CBS") -> "CBS"
+            upper.contains("NBC") -> "NBC"
+            upper.contains("FOX") -> "FOX"
+            upper.contains("PBS") -> "PBS"
+            upper.contains("CW") -> "CW"
+            upper.contains("ION") -> "ION"
+            upper.contains("METV") || upper.contains("ME TV") -> "MeTV"
+            upper.contains("GRIT") -> "Grit"
+            upper.contains("BOUNCE") -> "Bounce"
+            upper.contains("COZI") -> "Cozi TV"
+            upper.contains("COMET") -> "Comet"
+            upper.contains("COURT") -> "Court TV"
+            upper.contains("LAFF") -> "Laff"
+            upper.contains("DEFY") -> "Defy"
+            upper.contains("TELEMUNDO") -> "Telemundo"
+            upper.contains("UNIVISION") -> "Univision"
+            else -> if (upper.startsWith("K") || upper.startsWith("W")) "OTA" else "FAST"
         }
     }
 }

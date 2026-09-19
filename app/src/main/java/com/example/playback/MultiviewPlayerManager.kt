@@ -83,8 +83,6 @@ class MultiviewPlayerManager(
                 volume = if (isFocused) 1.0f else 0.0f
                 trackSelectionParameters = trackSelectionParameters
                     .buildUpon()
-                    .setMaxVideoSize(1280, 720)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isFocused)
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                     .build()
                 addListener(object : Player.Listener {
@@ -159,12 +157,6 @@ class MultiviewPlayerManager(
             // Only active audio tile outputs sound; all others remain at full broadcast video brightness
             val isFocused = (tileIndex == focusedTileIndex)
             player.volume = if (isFocused) 1.0f else 0.0f
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setMaxVideoSize(1280, 720)
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isFocused)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .build()
         } catch (e: Exception) {
             Log.e("MultiviewPlayer", "Failed to start playback on tile $tileIndex: ${e.message}")
         }

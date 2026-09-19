@@ -95,7 +95,7 @@ sealed class TabloResult<out T> {
 
 object GuideTiming {
     const val SLOT_MINUTES = 30L
-    const val SLOT_COUNT = 12
+    const val SLOT_COUNT = 48 // 24 hours of programming
     const val WINDOW_MINUTES = SLOT_MINUTES * SLOT_COUNT
 
     fun windowStartMs(now: Long = System.currentTimeMillis()): Long {

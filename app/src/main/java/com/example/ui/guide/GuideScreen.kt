@@ -59,6 +59,7 @@ private const val ROW_HEIGHT = 70f
 
 enum class GuideViewFormat(val label: String) {
     GRID("Timeline Grid"),
+    SCHEDULE("Upcoming Schedule"),
     LIST("Detailed Cards"),
     COMPACT("Channel List")
 }
@@ -141,13 +142,34 @@ fun GuideScreen(
     val firstContentFocusRequester = remember { FocusRequester() }
     val gridScrollState = rememberScrollState()
 
-    // Filter channels based on search query, favorite tags, and category chips
-    val filteredChannels = remember(channels, airings, selectedCategory, searchQuery, favoriteChannelIds) {
+    // High performance optimization: Pre-synthesize and memoize all airings across all channels for the 24-hour window
+    val windowEnd = remember(now) { GuideTiming.windowEndMs(now) }
+    val allChannelAiringsMap = remember(channels, airings, windowStart, windowEnd, now) {
+        channels.associate { channel ->
+            channel.channelId to TabloGuideSynthesizer.resolveAiringsForChannel(
+                channel = channel,
+                realAirings = airings,
+                windowStart = windowStart,
+                windowEnd = windowEnd,
+                now = now
+            )
+        }
+    }
+
+    // Filter channels based on search query, favorite tags, and category chips (searching channels AND future programs)
+    val filteredChannels = remember(channels, allChannelAiringsMap, selectedCategory, searchQuery, favoriteChannelIds) {
         channels.filter { ch ->
+            val chAirings = allChannelAiringsMap[ch.channelId].orEmpty()
             val matchesSearch = searchQuery.isBlank() ||
                     ch.callSign.contains(searchQuery, ignoreCase = true) ||
                     ch.network.contains(searchQuery, ignoreCase = true) ||
-                    ch.displayChannel.contains(searchQuery, ignoreCase = true)
+                    ch.displayChannel.contains(searchQuery, ignoreCase = true) ||
+                    chAirings.any { airing ->
+                        airing.title.contains(searchQuery, ignoreCase = true) ||
+                        airing.episodeTitle?.contains(searchQuery, ignoreCase = true) == true ||
+                        airing.description?.contains(searchQuery, ignoreCase = true) == true ||
+                        airing.category.contains(searchQuery, ignoreCase = true)
+                    }
 
             if (!matchesSearch) return@filter false
 
@@ -157,44 +179,110 @@ fun GuideScreen(
                 ChannelFilterCategory.OTA -> !ch.isOtt
                 ChannelFilterCategory.FAST -> ch.isOtt
                 ChannelFilterCategory.SPORTS -> {
-                    val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
-                    activeAiring?.category.equals("Sports", ignoreCase = true) ||
-                            activeAiring?.title?.contains("Sports", ignoreCase = true) == true ||
-                            ch.callSign.contains("SPORT", ignoreCase = true)
+                    ch.callSign.contains("SPORT", ignoreCase = true) ||
+                    ch.network.contains("SPORT", ignoreCase = true) ||
+                    ch.network.contains("STADIUM", ignoreCase = true) ||
+                    ch.network.contains("GOLF", ignoreCase = true) ||
+                    ch.network.contains("ESPN", ignoreCase = true) ||
+                    chAirings.any {
+                        it.category.equals("Sports", ignoreCase = true) ||
+                        it.title.contains("Sport", ignoreCase = true) ||
+                        it.title.contains("Football", ignoreCase = true) ||
+                        it.title.contains("Basketball", ignoreCase = true) ||
+                        it.title.contains("Baseball", ignoreCase = true) ||
+                        it.title.contains("Soccer", ignoreCase = true) ||
+                        it.title.contains("PGA", ignoreCase = true) ||
+                        it.title.contains("Championship", ignoreCase = true)
+                    }
                 }
                 ChannelFilterCategory.NEWS -> {
-                    val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
-                    activeAiring?.category.equals("News", ignoreCase = true) ||
-                            activeAiring?.title?.contains("News", ignoreCase = true) == true ||
-                            ch.callSign.contains("NEWS", ignoreCase = true)
+                    ch.callSign.contains("NEWS", ignoreCase = true) ||
+                    ch.network.contains("NEWS", ignoreCase = true) ||
+                    ch.network.contains("WEATHER", ignoreCase = true) ||
+                    chAirings.any {
+                        it.category.equals("News", ignoreCase = true) ||
+                        it.title.contains("News", ignoreCase = true) ||
+                        it.title.contains("Weather", ignoreCase = true)
+                    }
                 }
                 ChannelFilterCategory.MOVIES -> {
-                    val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
-                    activeAiring?.category.equals("Movies", ignoreCase = true) ||
-                            activeAiring?.title?.contains("Movie", ignoreCase = true) == true ||
-                            ch.callSign.contains("MOVIE", ignoreCase = true)
+                    ch.callSign.contains("MOVIE", ignoreCase = true) ||
+                    ch.network.contains("CINEMA", ignoreCase = true) ||
+                    ch.network.contains("FILM", ignoreCase = true) ||
+                    chAirings.any {
+                        it.category.equals("Movies", ignoreCase = true) ||
+                        it.title.contains("Movie", ignoreCase = true) ||
+                        it.title.contains("Film", ignoreCase = true)
+                    }
                 }
                 ChannelFilterCategory.SERIES -> {
-                    val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
-                    activeAiring?.category.equals("Drama", ignoreCase = true) ||
-                            activeAiring?.category.equals("Comedy", ignoreCase = true)
+                    ch.callSign.contains("DRAMA", ignoreCase = true) ||
+                    ch.callSign.contains("COMEDY", ignoreCase = true) ||
+                    chAirings.any {
+                        it.category.equals("Drama", ignoreCase = true) ||
+                        it.category.equals("Comedy", ignoreCase = true) ||
+                        it.category.equals("Series", ignoreCase = true) ||
+                        it.category.equals("Entertainment", ignoreCase = true)
+                    }
                 }
             }
         }
     }
 
-    // High performance optimization: Pre-synthesize and memoize all airings in one batch
-    val windowEnd = remember(now) { GuideTiming.windowEndMs(now) }
-    val channelAiringsMap = remember(filteredChannels, airings, windowStart, windowEnd) {
-        filteredChannels.associate { channel ->
-            channel.channelId to TabloGuideSynthesizer.resolveAiringsForChannel(
-                channel = channel,
-                realAirings = airings,
-                windowStart = windowStart,
-                windowEnd = windowEnd,
-                now = now
-            )
+    val channelAiringsMap = remember(filteredChannels, allChannelAiringsMap) {
+        filteredChannels.associate { it.channelId to (allChannelAiringsMap[it.channelId] ?: emptyList()) }
+    }
+
+    // Chronologically sorted list of all upcoming airings for Future Schedule search/topic browsing
+    val upcomingScheduleItems = remember(filteredChannels, allChannelAiringsMap, searchQuery, selectedCategory) {
+        val items = mutableListOf<Pair<TabloChannel, TabloAiring>>()
+        for (channel in filteredChannels) {
+            val channelAirings = allChannelAiringsMap[channel.channelId].orEmpty()
+            for (airing in channelAirings) {
+                val matchesSearch = searchQuery.isBlank() ||
+                        channel.callSign.contains(searchQuery, ignoreCase = true) ||
+                        channel.network.contains(searchQuery, ignoreCase = true) ||
+                        channel.displayChannel.contains(searchQuery, ignoreCase = true) ||
+                        airing.title.contains(searchQuery, ignoreCase = true) ||
+                        airing.episodeTitle?.contains(searchQuery, ignoreCase = true) == true ||
+                        airing.description?.contains(searchQuery, ignoreCase = true) == true ||
+                        airing.category.contains(searchQuery, ignoreCase = true)
+
+                val matchesCategory = when (selectedCategory) {
+                    ChannelFilterCategory.ALL, ChannelFilterCategory.FAVORITES, ChannelFilterCategory.OTA, ChannelFilterCategory.FAST -> true
+                    ChannelFilterCategory.SPORTS -> {
+                        airing.category.equals("Sports", ignoreCase = true) ||
+                        airing.title.contains("Sport", ignoreCase = true) ||
+                        airing.title.contains("Football", ignoreCase = true) ||
+                        airing.title.contains("Basketball", ignoreCase = true) ||
+                        airing.title.contains("Baseball", ignoreCase = true) ||
+                        airing.title.contains("Soccer", ignoreCase = true) ||
+                        channel.callSign.contains("SPORT", ignoreCase = true)
+                    }
+                    ChannelFilterCategory.NEWS -> {
+                        airing.category.equals("News", ignoreCase = true) ||
+                        airing.title.contains("News", ignoreCase = true) ||
+                        airing.title.contains("Weather", ignoreCase = true) ||
+                        channel.callSign.contains("NEWS", ignoreCase = true)
+                    }
+                    ChannelFilterCategory.MOVIES -> {
+                        airing.category.equals("Movies", ignoreCase = true) ||
+                        airing.title.contains("Movie", ignoreCase = true) ||
+                        channel.callSign.contains("MOVIE", ignoreCase = true)
+                    }
+                    ChannelFilterCategory.SERIES -> {
+                        airing.category.equals("Drama", ignoreCase = true) ||
+                        airing.category.equals("Comedy", ignoreCase = true) ||
+                        airing.category.equals("Series", ignoreCase = true)
+                    }
+                }
+
+                if (matchesSearch && matchesCategory) {
+                    items.add(Pair(channel, airing))
+                }
+            }
         }
+        items.sortedWith(compareBy<Pair<TabloChannel, TabloAiring>> { it.second.startTimeMillis }.thenBy { it.first.majorNumber })
     }
 
     // Auto-focus category bar when navigating down from top quick bar
@@ -266,7 +354,8 @@ fun GuideScreen(
                         viewFormat = selectedFormat,
                         onClick = {
                             selectedFormat = when (selectedFormat) {
-                                GuideViewFormat.GRID -> GuideViewFormat.LIST
+                                GuideViewFormat.GRID -> GuideViewFormat.SCHEDULE
+                                GuideViewFormat.SCHEDULE -> GuideViewFormat.LIST
                                 GuideViewFormat.LIST -> GuideViewFormat.COMPACT
                                 GuideViewFormat.COMPACT -> GuideViewFormat.GRID
                             }
@@ -330,6 +419,32 @@ fun GuideScreen(
                                         favoriteChannelIds - ch.channelId
                                     } else {
                                         favoriteChannelIds + ch.channelId
+                                    }
+                                },
+                                onRequestCategoryNav = {
+                                    filterFocusRequesters[selectedCategory]?.safeRequest()
+                                },
+                                onBack = onBack,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        GuideViewFormat.SCHEDULE -> {
+                            Tablo4UFutureScheduleView(
+                                scheduleItems = upcomingScheduleItems,
+                                now = now,
+                                timeFormat = timeFormat,
+                                favoriteChannelIds = favoriteChannelIds,
+                                scheduledRecordingIds = scheduledRecordingIds,
+                                firstContentFocusRequester = firstContentFocusRequester,
+                                onWatchChannel = onWatchChannel,
+                                onShowDetails = { ch, airing ->
+                                    programDetailsDialog = Pair(ch, airing)
+                                },
+                                onToggleRecord = { airing ->
+                                    scheduledRecordingIds = if (scheduledRecordingIds.contains(airing.airingId)) {
+                                        scheduledRecordingIds - airing.airingId
+                                    } else {
+                                        scheduledRecordingIds + airing.airingId
                                     }
                                 },
                                 onRequestCategoryNav = {
@@ -522,6 +637,7 @@ private fun Tablo4UFormatButton(
             Icon(
                 imageVector = when (viewFormat) {
                     GuideViewFormat.GRID -> Icons.Default.GridView
+                    GuideViewFormat.SCHEDULE -> Icons.Default.CalendarMonth
                     GuideViewFormat.LIST -> Icons.Default.ViewList
                     GuideViewFormat.COMPACT -> Icons.Default.LiveTv
                 },
@@ -1807,6 +1923,321 @@ private fun GuideLoadingState() {
                 color = TextSecondary,
                 fontSize = 12.sp
             )
+        }
+    }
+}
+
+/**
+ * Future Programming Schedule View for searching and browsing upcoming topic schedules (e.g. Sports, Movies, News).
+ */
+@Composable
+private fun Tablo4UFutureScheduleView(
+    scheduleItems: List<Pair<TabloChannel, TabloAiring>>,
+    now: Long,
+    timeFormat: SimpleDateFormat,
+    favoriteChannelIds: Set<String>,
+    scheduledRecordingIds: Set<String>,
+    firstContentFocusRequester: FocusRequester,
+    onWatchChannel: (TabloChannel) -> Unit,
+    onShowDetails: (TabloChannel, TabloAiring) -> Unit,
+    onToggleRecord: (TabloAiring) -> Unit,
+    onRequestCategoryNav: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+    val dayFormat = remember { SimpleDateFormat("EEE, MMM d", Locale.getDefault()) }
+
+    if (scheduleItems.isEmpty()) {
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CalendarMonth,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(40.dp)
+                )
+                Text(
+                    text = "No upcoming programming found for this filter",
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Try clearing search keywords or selecting a broader category.",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        }
+        return
+    }
+
+    LazyColumn(
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.fillMaxSize()
+    ) {
+        itemsIndexed(scheduleItems) { index, (channel, airing) ->
+            val isFirst = index == 0
+            val isRecorded = scheduledRecordingIds.contains(airing.airingId)
+            val isFavorite = favoriteChannelIds.contains(channel.channelId)
+
+            val airingStartCal = java.util.Calendar.getInstance().apply { timeInMillis = airing.startTimeMillis }
+            val nowCal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+            val isToday = airingStartCal.get(java.util.Calendar.DAY_OF_YEAR) == nowCal.get(java.util.Calendar.DAY_OF_YEAR) &&
+                    airingStartCal.get(java.util.Calendar.YEAR) == nowCal.get(java.util.Calendar.YEAR)
+
+            val timeLabel = when {
+                airing.isLive -> "🔴 LIVE NOW"
+                isToday -> "TODAY • ${timeFormat.format(Date(airing.startTimeMillis))}"
+                else -> "${dayFormat.format(Date(airing.startTimeMillis))} • ${timeFormat.format(Date(airing.startTimeMillis))}"
+            }
+
+            Tablo4UFutureScheduleItemCard(
+                channel = channel,
+                airing = airing,
+                timeLabel = timeLabel,
+                isRecorded = isRecorded,
+                isFavorite = isFavorite,
+                focusRequester = if (isFirst) firstContentFocusRequester else null,
+                onWatch = { onWatchChannel(channel) },
+                onShowDetails = { onShowDetails(channel, airing) },
+                onToggleRecord = { onToggleRecord(airing) },
+                onRequestCategoryNav = if (isFirst) onRequestCategoryNav else null,
+                onBack = onBack
+            )
+        }
+    }
+}
+
+@Composable
+private fun Tablo4UFutureScheduleItemCard(
+    channel: TabloChannel,
+    airing: TabloAiring,
+    timeLabel: String,
+    isRecorded: Boolean,
+    isFavorite: Boolean,
+    focusRequester: FocusRequester?,
+    onWatch: () -> Unit,
+    onShowDetails: () -> Unit,
+    onToggleRecord: () -> Unit,
+    onRequestCategoryNav: (() -> Unit)?,
+    onBack: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val genreColor = remember(airing.category) { getGenreColor(airing.category) }
+
+    var cardModifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(10.dp))
+        .background(if (isFocused) TvSurfaceElevated else TvSurface)
+        .border(
+            if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder),
+            RoundedCornerShape(10.dp)
+        )
+        .clickable(interactionSource = interactionSource, indication = null) {
+            onShowDetails()
+        }
+        .focusable(interactionSource = interactionSource)
+        .onKeyEvent { keyEvent ->
+            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                when (keyEvent.nativeKeyEvent.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        if (onRequestCategoryNav != null) {
+                            onRequestCategoryNav()
+                            true
+                        } else false
+                    }
+                    KeyEvent.KEYCODE_BACK -> {
+                        onBack()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                        onShowDetails()
+                        true
+                    }
+                    else -> false
+                }
+            } else false
+        }
+        .padding(horizontal = 14.dp, vertical = 10.dp)
+
+    if (focusRequester != null) {
+        cardModifier = cardModifier.focusRequester(focusRequester)
+    }
+
+    Row(
+        modifier = cardModifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Time & Channel Badge Column
+        Column(
+            modifier = Modifier.width(130.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = timeLabel,
+                color = if (airing.isLive) LiveRed else TabloTeal,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .background(if (channel.isOtt) Color(0x3300D2B4) else Color(0x3338BDF8), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = if (channel.isOtt) "FAST" else "OTA",
+                        color = if (channel.isOtt) TabloTeal else TvFocusHighlight,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+                Text(
+                    text = channel.displayName,
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // Program Info Column
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = airing.title,
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Box(
+                    modifier = Modifier
+                        .background(genreColor.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(airing.category, color = genreColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+                if (airing.rating.isNotEmpty()) {
+                    Text(
+                        text = airing.rating,
+                        color = TextMuted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            if (!airing.episodeTitle.isNullOrBlank()) {
+                Text(
+                    text = airing.episodeTitle,
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Text(
+                text = airing.description ?: "Live broadcast streaming on ${channel.callSign}.",
+                color = TextMuted,
+                fontSize = 10.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 14.sp
+            )
+        }
+
+        // Quick Action Buttons
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (airing.isLive) {
+                Surface(
+                    onClick = onWatch,
+                    shape = RoundedCornerShape(6.dp),
+                    color = TabloTeal,
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(13.dp))
+                        Text("Watch", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            } else {
+                Surface(
+                    onClick = onWatch,
+                    shape = RoundedCornerShape(6.dp),
+                    color = TvSurfaceElevated,
+                    border = BorderStroke(1.dp, TvBorder),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Tv, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(12.dp))
+                        Text("Tune", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Surface(
+                onClick = onToggleRecord,
+                shape = RoundedCornerShape(6.dp),
+                color = if (isRecorded) Color(0x33EF4444) else TvSurfaceElevated,
+                border = BorderStroke(1.dp, if (isRecorded) LiveRed else TvBorder),
+                modifier = Modifier.height(28.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FiberManualRecord,
+                        contentDescription = null,
+                        tint = if (isRecorded) LiveRed else TextMuted,
+                        modifier = Modifier.size(10.dp)
+                    )
+                    Text(
+                        text = if (isRecorded) "Rec On" else "Record",
+                        color = if (isRecorded) LiveRed else TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 }

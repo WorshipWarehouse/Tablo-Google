@@ -66,21 +66,28 @@ fun TvVideoTile(
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
-    showOverlayInfo: Boolean = true
+    showOverlayInfo: Boolean = true,
+    showBorder: Boolean = true
 ) {
     val context = LocalContext.current
 
-    // Deterministic subtle gray border when focused; no dark/mute overlay on inactive feeds
-    val borderStroke = if (isAudioFocused) {
-        BorderStroke(2.dp, ActiveAudioBorderColor)
+    // Border is only used for multiview tiles to indicate audio/focus; solo show has no border
+    val borderModifier = if (showBorder) {
+        val borderStroke = if (isAudioFocused) {
+            BorderStroke(2.dp, ActiveAudioBorderColor)
+        } else {
+            BorderStroke(1.dp, Color(0x1AFFFFFF))
+        }
+        Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .border(borderStroke, RoundedCornerShape(4.dp))
     } else {
-        BorderStroke(1.dp, Color(0x1AFFFFFF))
+        Modifier
     }
 
     val baseModifier = modifier
         .fillMaxSize()
-        .clip(RoundedCornerShape(4.dp))
-        .border(borderStroke, RoundedCornerShape(4.dp))
+        .then(borderModifier)
         .clickable {
             onFocused()
             onSelect()

@@ -90,10 +90,10 @@ fun MultiviewScreen(
         showTileInfo = false
     }
 
-    // Auto-hide controls overlay after 6 seconds of no interactions
+    // Auto-hide controls overlay after 15 seconds of no interactions
     LaunchedEffect(showControlsOverlay) {
         if (showControlsOverlay) {
-            delay(6500)
+            delay(15000)
             showControlsOverlay = false
         }
     }
@@ -102,46 +102,40 @@ fun MultiviewScreen(
     val activeAiring = airings.find { it.channelId == activeChannel?.channelId }
 
     // Explicit D-pad navigation interceptor for Fire TV Remote
-    var baseDpadModifier = Modifier
-        .fillMaxSize()
-        .focusable()
-        .onKeyEvent { keyEvent ->
-            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                val keyCode = keyEvent.nativeKeyEvent.keyCode
-                when (keyCode) {
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        if (layoutType != MultiviewLayoutType.SOLO) {
-                            val slotChannel = channels.getOrNull(focusedTileIndex)
-                            if (slotChannel == null) {
-                                // Empty tile -> open controls/multiview drawer to pick channel
-                                showControlsOverlay = true
+    var baseDpadModifier = if (!showControlsOverlay) {
+        Modifier
+            .fillMaxSize()
+            .focusable()
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    val keyCode = keyEvent.nativeKeyEvent.keyCode
+                    when (keyCode) {
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                            if (layoutType != MultiviewLayoutType.SOLO) {
+                                val slotChannel = channels.getOrNull(focusedTileIndex)
+                                if (slotChannel == null) {
+                                    // Empty tile -> open controls/multiview drawer to pick channel
+                                    showControlsOverlay = true
+                                } else {
+                                    onSelectSolo(focusedTileIndex)
+                                }
+                                true
                             } else {
-                                onSelectSolo(focusedTileIndex)
+                                // In Solo mode, clicking center toggles or shows player controls
+                                showControlsOverlay = true
+                                true
                             }
-                            true
-                        } else {
-                            // In Solo mode, clicking center toggles or shows player controls
-                            showControlsOverlay = !showControlsOverlay
-                            true
                         }
-                    }
-                    KeyEvent.KEYCODE_BACK -> {
-                        if (showControlsOverlay) {
-                            showControlsOverlay = false
-                            true
-                        } else if (layoutType == MultiviewLayoutType.SOLO) {
-                            onBackFromSolo()
-                            true
-                        } else {
-                            onRequestQuickBar(focusedTileIndex == 0)
-                            true
+                        KeyEvent.KEYCODE_BACK -> {
+                            if (layoutType == MultiviewLayoutType.SOLO) {
+                                onBackFromSolo()
+                                true
+                            } else {
+                                onRequestQuickBar(focusedTileIndex == 0)
+                                true
+                            }
                         }
-                    }
-                    KeyEvent.KEYCODE_DPAD_UP -> {
-                        if (showControlsOverlay) {
-                            showControlsOverlay = false
-                            true
-                        } else {
+                        KeyEvent.KEYCODE_DPAD_UP -> {
                             when (layoutType) {
                                 MultiviewLayoutType.GRID_2X2 -> {
                                     if (focusedTileIndex == 2) {
@@ -187,8 +181,7 @@ fun MultiviewScreen(
                                 }
                             }
                         }
-                    }
-                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        KeyEvent.KEYCODE_DPAD_DOWN -> {
                         when (layoutType) {
                             MultiviewLayoutType.GRID_2X2 -> {
                                 if (focusedTileIndex == 0) {
@@ -342,7 +335,7 @@ fun MultiviewScreen(
                         }
                     }
                     KeyEvent.KEYCODE_MENU -> {
-                        showControlsOverlay = !showControlsOverlay
+                        showControlsOverlay = true
                         true
                     }
                     KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
@@ -353,6 +346,20 @@ fun MultiviewScreen(
                 }
             } else false
         }
+    } else {
+        Modifier
+            .fillMaxSize()
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
+                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MENU
+                    ) {
+                        showControlsOverlay = false
+                        true
+                    } else false
+                } else false
+            }
+    }
 
     if (focusRequester != null) {
         baseDpadModifier = baseDpadModifier.focusRequester(focusRequester)
@@ -675,8 +682,8 @@ fun MultiviewScreen(
             }
 
             MultiviewLayoutType.SOLO -> {
-                // Solo / Fullscreen Mode
-                Box(modifier = Modifier.fillMaxSize().padding(1.dp)) {
+                // Solo / Fullscreen Mode (No borders)
+                Box(modifier = Modifier.fillMaxSize()) {
                     RenderTile(
                         tileIndex = focusedTileIndex,
                         channels = channels,
@@ -686,7 +693,8 @@ fun MultiviewScreen(
                         onFocus = { /* already focused */ },
                         onSelect = { showControlsOverlay = !showControlsOverlay },
                         onEmptyClick = { showControlsOverlay = true },
-                        showInfo = showTileInfo
+                        showInfo = showTileInfo,
+                        showBorder = false
                     )
                 }
             }
@@ -725,7 +733,8 @@ private fun RenderTile(
     onFocus: () -> Unit,
     onSelect: () -> Unit,
     onEmptyClick: () -> Unit,
-    showInfo: Boolean
+    showInfo: Boolean,
+    showBorder: Boolean = true
 ) {
     val channel = channels.getOrNull(tileIndex)
     if (channel == null) {
@@ -778,6 +787,7 @@ private fun RenderTile(
         isAudioFocused = isFocused,
         onFocused = onFocus,
         onSelect = onSelect,
-        showOverlayInfo = showInfo
+        showOverlayInfo = showInfo,
+        showBorder = showBorder
     )
 }
