@@ -67,9 +67,11 @@ fun TvVideoTile(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
     showOverlayInfo: Boolean = true,
-    showBorder: Boolean = true
+    showBorder: Boolean = true,
+    tileError: String? = null
 ) {
     val context = LocalContext.current
+    val playerError = player?.playerError?.message ?: tileError
 
     // Border is only used for multiview tiles to indicate audio/focus; solo show has no border
     val borderModifier = if (showBorder) {
@@ -179,6 +181,36 @@ fun TvVideoTile(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        // 3. On-screen Playback Error Card (visible if stream fails instead of failing silently)
+        if (!playerError.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xEB0F172A))
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Playback Error",
+                        color = Color(0xFFEF4444),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = playerError,
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

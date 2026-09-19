@@ -142,11 +142,11 @@ fun GuideScreen(
     val firstContentFocusRequester = remember { FocusRequester() }
     val gridScrollState = rememberScrollState()
 
-    // High performance optimization: Pre-synthesize and memoize all airings across all channels for the 24-hour window
+    // Pre-calculate and memoize real EPG airings across all channels for the 24-hour window
     val windowEnd = remember(now) { GuideTiming.windowEndMs(now) }
     val allChannelAiringsMap = remember(channels, airings, windowStart, windowEnd, now) {
         channels.associate { channel ->
-            channel.channelId to TabloGuideSynthesizer.resolveAiringsForChannel(
+            channel.channelId to TabloEpgResolver.resolveAiringsForChannel(
                 channel = channel,
                 realAirings = airings,
                 windowStart = windowStart,

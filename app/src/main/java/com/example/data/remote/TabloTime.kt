@@ -18,7 +18,7 @@ import java.util.TimeZone
 object TabloTime {
 
     private val pattern = Regex(
-        """(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?"""
+        """(\d{4})-(\d{2})-(\d{2})([T ])(\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?"""
     )
 
     fun parseIso8601(value: String?): Long? {
@@ -38,14 +38,23 @@ object TabloTime {
             val year = groups[1].toInt()
             val month = groups[2].toInt()
             val day = groups[3].toInt()
-            val hour = groups[4].toInt()
-            val minute = groups[5].toInt()
-            val second = groups.getOrNull(6).orEmpty().ifEmpty { "0" }.toInt()
-            val frac = groups.getOrNull(7).orEmpty().take(3).padEnd(3, '0').toIntOrNull() ?: 0
+            val sep = groups[4]
+            val hour = groups[5].toInt()
+            val minute = groups[6].toInt()
+            val secondStr = groups.getOrNull(7).orEmpty()
+            val frac = groups.getOrNull(8).orEmpty().take(3).padEnd(3, '0').toIntOrNull() ?: 0
+            val zone = groups.getOrNull(9).orEmpty()
+
+            // "2023-01-03 01:00" or "2023-01-03T01:00" without seconds or timezone is incomplete/invalid ISO-8601
+            if (secondStr.isEmpty() && (sep == " " || zone.isEmpty())) {
+                return null
+            }
+
+            val second = secondStr.ifEmpty { "0" }.toInt()
 
             if (month in 1..12 && day in 1..31 && hour in 0..23 && minute in 0..59 && second in 0..59) {
                 var utcMillis = Date.UTC(year - 1900, month - 1, day, hour, minute, second) + frac
-                val zone = groups.getOrNull(8).orEmpty()
+                val zone = groups.getOrNull(9).orEmpty()
                 if (zone.isNotEmpty() && zone != "Z") {
                     val negative = zone.startsWith("-")
                     val body = zone.drop(1).replace(":", "")
@@ -70,6 +79,7 @@ object TabloTime {
             try {
                 val sdf = SimpleDateFormat(fmt, Locale.US)
                 sdf.timeZone = TimeZone.getTimeZone("UTC")
+                sdf.isLenient = false
                 val parsed = sdf.parse(trimmed)
                 if (parsed != null) return parsed.time
             } catch (_: Exception) {}

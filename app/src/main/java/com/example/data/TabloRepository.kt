@@ -267,6 +267,7 @@ class TabloRepository(
                     )
 
                     if (cloudChannels.isNotEmpty()) {
+                        Log.i("TabloRepository", "Gen 4 Cloud channels response count: ${cloudChannels.size} channels")
                         val mapped = cloudChannels.map { ch ->
                             val isOta = ch.kind.equals("ota", ignoreCase = true)
                             val info = if (isOta) ch.ota else (ch.ott ?: ch.ota)
