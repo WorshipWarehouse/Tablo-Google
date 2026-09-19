@@ -1,11 +1,13 @@
 package com.example.model
 
 enum class MultiviewLayoutType(val displayName: String, val maxChannels: Int) {
-    GRID_2X2("2x2 Grid", 4),
-    PRIMARY_1_PLUS_3("1+3 Primary", 4),
-    PRIMARY_1_PLUS_2("1+2 Primary", 3),
-    HORIZONTAL_2_UP("2-Up Split", 2),
-    SOLO("Solo / Fullscreen", 1)
+    SOLO("Solo / Fullscreen", 1),
+    HORIZONTAL_2_UP("50/50 Dual Split", 2),
+    PIP("Picture-in-Picture (PIP)", 2),
+    PRIMARY_1_PLUS_2("1+2 Stacked", 3),
+    VERTICAL_3_UP("3-Column Split", 3),
+    GRID_2X2("2x2 Quad Grid", 4),
+    PRIMARY_1_PLUS_3("1+3 Primary Tray", 4)
 }
 
 data class TabloDevice(

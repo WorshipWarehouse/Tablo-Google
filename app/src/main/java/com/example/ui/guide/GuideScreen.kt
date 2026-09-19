@@ -107,6 +107,7 @@ fun GuideScreen(
     tabloDevice: TabloDevice? = null,
     isLoading: Boolean = false,
     onRefresh: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     focusRequester: FocusRequester? = null,
     onRequestTopNav: () -> Unit = {},
     onNavigateLeftPage: () -> Unit = {},
@@ -250,7 +251,7 @@ fun GuideScreen(
                     )
                 }
 
-                // Controls: Search + Format Toggle
+                // Controls: Search + Format Toggle + Settings Gear
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -270,6 +271,11 @@ fun GuideScreen(
                                 GuideViewFormat.COMPACT -> GuideViewFormat.GRID
                             }
                         },
+                        onRequestTopNav = onRequestTopNav
+                    )
+
+                    Tablo4USettingsButton(
+                        onClick = onOpenSettings,
                         onRequestTopNav = onRequestTopNav
                     )
                 }
@@ -525,6 +531,65 @@ private fun Tablo4UFormatButton(
             )
             Text(
                 text = viewFormat.label,
+                color = if (isFocused) Color.Black else TextPrimary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+/**
+ * Settings Gear Action Button in the TV Guide Header
+ */
+@Composable
+private fun Tablo4USettingsButton(
+    onClick: () -> Unit,
+    onRequestTopNav: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .height(32.dp)
+            .testTag("btn_settings_gear")
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isFocused) TabloTeal else TvSurfaceElevated)
+            .border(
+                if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder),
+                RoundedCornerShape(8.dp)
+            )
+            .clickable { onClick() }
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        onRequestTopNav()
+                        true
+                    } else if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                    ) {
+                        onClick()
+                        true
+                    } else false
+                } else false
+            }
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Settings & Multiview Hub",
+                tint = if (isFocused) Color.Black else TabloTeal,
+                modifier = Modifier.size(15.dp)
+            )
+            Text(
+                text = "Settings",
                 color = if (isFocused) Color.Black else TextPrimary,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold

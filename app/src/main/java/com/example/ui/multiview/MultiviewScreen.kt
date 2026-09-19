@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -172,7 +173,11 @@ fun MultiviewScreen(
                                         true
                                     }
                                 }
-                                MultiviewLayoutType.HORIZONTAL_2_UP -> {
+                                MultiviewLayoutType.VERTICAL_3_UP -> {
+                                    onRequestQuickBar(focusedTileIndex == 0)
+                                    true
+                                }
+                                MultiviewLayoutType.HORIZONTAL_2_UP, MultiviewLayoutType.PIP -> {
                                     onRequestQuickBar(focusedTileIndex == 0)
                                     true
                                 }
@@ -215,7 +220,10 @@ fun MultiviewScreen(
                                     true
                                 }
                             }
-                            MultiviewLayoutType.HORIZONTAL_2_UP, MultiviewLayoutType.SOLO -> {
+                            MultiviewLayoutType.VERTICAL_3_UP,
+                            MultiviewLayoutType.HORIZONTAL_2_UP,
+                            MultiviewLayoutType.PIP,
+                            MultiviewLayoutType.SOLO -> {
                                 showControlsOverlay = true
                                 true
                             }
@@ -253,7 +261,16 @@ fun MultiviewScreen(
                                     true
                                 }
                             }
-                            MultiviewLayoutType.HORIZONTAL_2_UP -> {
+                            MultiviewLayoutType.VERTICAL_3_UP -> {
+                                if (focusedTileIndex > 0) {
+                                    onFocusChanged(focusedTileIndex - 1)
+                                    true
+                                } else {
+                                    onNavigateLeftPage()
+                                    true
+                                }
+                            }
+                            MultiviewLayoutType.HORIZONTAL_2_UP, MultiviewLayoutType.PIP -> {
                                 if (focusedTileIndex == 1) {
                                     onFocusChanged(0)
                                     true
@@ -300,7 +317,16 @@ fun MultiviewScreen(
                                     true
                                 }
                             }
-                            MultiviewLayoutType.HORIZONTAL_2_UP -> {
+                            MultiviewLayoutType.VERTICAL_3_UP -> {
+                                if (focusedTileIndex < 2) {
+                                    onFocusChanged(focusedTileIndex + 1)
+                                    true
+                                } else {
+                                    onNavigateRightPage()
+                                    true
+                                }
+                            }
+                            MultiviewLayoutType.HORIZONTAL_2_UP, MultiviewLayoutType.PIP -> {
                                 if (focusedTileIndex == 0) {
                                     onFocusChanged(1)
                                     true
@@ -535,6 +561,77 @@ fun MultiviewScreen(
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            MultiviewLayoutType.VERTICAL_3_UP -> {
+                // 3 Views: 3-Column Vertical Split (33% / 33% / 33%)
+                Row(modifier = Modifier.fillMaxSize()) {
+                    for (i in 0..2) {
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(2.dp)) {
+                            RenderTile(
+                                tileIndex = i,
+                                channels = channels,
+                                airings = airings,
+                                playerManager = playerManager,
+                                isFocused = focusedTileIndex == i,
+                                onFocus = { onFocusChanged(i) },
+                                onSelect = { onSelectSolo(i) },
+                                onEmptyClick = {
+                                    onFocusChanged(i)
+                                    showControlsOverlay = true
+                                },
+                                showInfo = showTileInfo
+                            )
+                        }
+                    }
+                }
+            }
+
+            MultiviewLayoutType.PIP -> {
+                // Picture-in-Picture: Primary Fullscreen (Tile 0) + Floating PiP (Tile 1) in bottom-right
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Main Background Stream (Tile 0)
+                    Box(modifier = Modifier.fillMaxSize().padding(1.dp)) {
+                        RenderTile(
+                            tileIndex = 0,
+                            channels = channels,
+                            airings = airings,
+                            playerManager = playerManager,
+                            isFocused = focusedTileIndex == 0,
+                            onFocus = { onFocusChanged(0) },
+                            onSelect = { onSelectSolo(0) },
+                            onEmptyClick = {
+                                onFocusChanged(0)
+                                showControlsOverlay = true
+                            },
+                            showInfo = showTileInfo
+                        )
+                    }
+
+                    // Floating Picture-in-Picture Sub-Stream (Tile 1)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 24.dp, bottom = 24.dp)
+                            .fillMaxWidth(0.32f)
+                            .aspectRatio(16f / 9f)
+                    ) {
+                        RenderTile(
+                            tileIndex = 1,
+                            channels = channels,
+                            airings = airings,
+                            playerManager = playerManager,
+                            isFocused = focusedTileIndex == 1,
+                            onFocus = { onFocusChanged(1) },
+                            onSelect = { onSelectSolo(1) },
+                            onEmptyClick = {
+                                onFocusChanged(1)
+                                showControlsOverlay = true
+                            },
+                            showInfo = showTileInfo
+                        )
                     }
                 }
             }

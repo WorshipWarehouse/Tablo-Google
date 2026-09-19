@@ -7,30 +7,23 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.model.MultiviewLayoutType
-import com.example.ui.components.TvQuickBar
 import com.example.ui.components.TvScreenSection
-import com.example.ui.connect.TabloConnectionScreen
 import com.example.ui.guide.GuideScreen
 import com.example.ui.login.TabloLoginScreen
 import com.example.ui.multiview.MultiviewScreen
 import com.example.ui.saved.SaveMultiviewNameDialog
-import com.example.ui.saved.SavedMultiviewsScreen
-import com.example.ui.search.SearchScreen
+import com.example.ui.settings.SettingsHubOverlay
 import com.example.ui.theme.TvBackground
 import com.example.ui.util.safeRequest
 
@@ -41,7 +34,6 @@ fun TabloTvApp(
     val currentSection by viewModel.currentSection.collectAsState()
     val currentLayout by viewModel.currentLayout.collectAsState()
     val focusedTileIndex by viewModel.focusedTileIndex.collectAsState()
-    val isQuickBarVisible by viewModel.isQuickBarVisible.collectAsState()
     val channels by viewModel.channels.collectAsState()
     val airings by viewModel.airings.collectAsState()
     val activeChannels by viewModel.activeMultiviewChannels.collectAsState()
@@ -57,22 +49,11 @@ fun TabloTvApp(
     val isLoadingChannels by viewModel.isLoadingChannels.collectAsState()
     val isLoadingGuide by viewModel.isLoadingGuide.collectAsState()
 
+    var showSettingsHub by remember { mutableStateOf(false) }
     var showQuickSaveDialog by remember { mutableStateOf(false) }
 
-    val navFocusRequesters = remember {
-        mapOf(
-            TvScreenSection.MULTIVIEW to FocusRequester(),
-            TvScreenSection.GUIDE to FocusRequester(),
-            TvScreenSection.SEARCH to FocusRequester(),
-            TvScreenSection.SAVED to FocusRequester(),
-            TvScreenSection.TABLO to FocusRequester()
-        )
-    }
-    val contentFocusRequester = remember { FocusRequester() }
-
-    fun handleSectionSelect(section: TvScreenSection) {
-        viewModel.setSection(section)
-    }
+    val guideFocusRequester = remember { FocusRequester() }
+    val playerFocusRequester = remember { FocusRequester() }
 
     Box(
         modifier = Modifier
@@ -91,211 +72,106 @@ fun TabloTvApp(
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            // Authenticated TV Experience
-            if (currentSection == TvScreenSection.MULTIVIEW) {
-                // Multiview: Full Screen Video Surface with focused D-pad control
-                MultiviewScreen(
-                    channels = activeChannels,
-                    airings = airings,
-                    playerManager = viewModel.playerManager,
-                    layoutType = currentLayout,
-                    focusedTileIndex = focusedTileIndex,
-                    allChannels = channels,
-                    isPlaying = isPlaying,
-                    onFocusChanged = { viewModel.setFocusedTile(it) },
-                    onSelectSolo = { viewModel.enterSolo(it) },
-                    onBackFromSolo = { viewModel.exitSolo() },
-                    onRequestQuickBar = { fromLeft ->
-                        viewModel.showQuickBar()
-                        val target = if (fromLeft) TvScreenSection.MULTIVIEW else TvScreenSection.SEARCH
-                        navFocusRequesters[target]?.safeRequest()
-                    },
-                    onTogglePlayPause = { viewModel.togglePlayPause() },
-                    onGoToLive = { viewModel.goToLive() },
-                    onOpenGuide = { handleSectionSelect(TvScreenSection.GUIDE) },
-                    onSelectLayout = { viewModel.setLayout(it) },
-                    onAssignChannelToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
-                    onRemoveChannelFromTile = { viewModel.removeChannelFromTile(it) },
-                    onNavigateLeftPage = {
-                        handleSectionSelect(TvScreenSection.TABLO)
-                        navFocusRequesters[TvScreenSection.TABLO]?.safeRequest()
-                    },
-                    onNavigateRightPage = {
-                        handleSectionSelect(TvScreenSection.GUIDE)
-                        navFocusRequesters[TvScreenSection.GUIDE]?.safeRequest()
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    focusRequester = contentFocusRequester
-                )
-
-                // Overlaid TV Quick Bar (HUD slides down from top over video)
-                TvQuickBar(
-                    currentSection = currentSection,
-                    currentLayout = currentLayout,
-                    tabloDevice = tabloDevice,
-                    visible = isQuickBarVisible,
-                    onSelectSection = { handleSectionSelect(it) },
-                    onSelectLayout = { viewModel.setLayout(it) },
-                    onSaveCurrentMultiview = { showQuickSaveDialog = true },
-                    navFocusRequesters = navFocusRequesters,
-                    onNavigateDown = { fromSection ->
-                        viewModel.hideQuickBar()
-                        val targetTile = when (fromSection) {
-                            TvScreenSection.MULTIVIEW, TvScreenSection.GUIDE -> 0
-                            else -> 1
-                        }
-                        viewModel.setFocusedTile(targetTile)
-                        contentFocusRequester.safeRequest()
-                    },
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
-            } else {
-                // Dedicated Screens (Guide, Search, Saved, Tablo): Permanent Top Nav Bar + Body
-                Column(modifier = Modifier.fillMaxSize()) {
-                    TvQuickBar(
-                        currentSection = currentSection,
-                        currentLayout = currentLayout,
-                        tabloDevice = tabloDevice,
-                        visible = true,
-                        onSelectSection = { handleSectionSelect(it) },
-                        onSelectLayout = { viewModel.setLayout(it) },
-                        onSaveCurrentMultiview = { showQuickSaveDialog = true },
-                        navFocusRequesters = navFocusRequesters,
-                        onNavigateDown = {
-                            contentFocusRequester.safeRequest()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    ) {
-                        AnimatedContent(
-                            targetState = currentSection,
-                            transitionSpec = {
-                                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+            // Main Application Layout: TV Guide is the Primary Landing Screen
+            AnimatedContent(
+                targetState = currentSection,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
+                },
+                label = "MainAppTransition",
+                modifier = Modifier.fillMaxSize()
+            ) { section ->
+                when (section) {
+                    TvScreenSection.MULTIVIEW -> {
+                        // Multiview / Live Video Surface with In-Player Action HUD & Mini Drawer
+                        MultiviewScreen(
+                            channels = activeChannels,
+                            airings = airings,
+                            playerManager = viewModel.playerManager,
+                            layoutType = currentLayout,
+                            focusedTileIndex = focusedTileIndex,
+                            allChannels = channels,
+                            isPlaying = isPlaying,
+                            onFocusChanged = { viewModel.setFocusedTile(it) },
+                            onSelectSolo = { viewModel.enterSolo(it) },
+                            onBackFromSolo = { viewModel.exitSolo() },
+                            onRequestQuickBar = {
+                                // Toggle Settings Hub on quick action
+                                showSettingsHub = true
                             },
-                            label = "ScreenTransition",
+                            onTogglePlayPause = { viewModel.togglePlayPause() },
+                            onGoToLive = { viewModel.goToLive() },
+                            onOpenGuide = { viewModel.setSection(TvScreenSection.GUIDE) },
+                            onSelectLayout = { viewModel.setLayout(it) },
+                            onAssignChannelToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
+                            onRemoveChannelFromTile = { viewModel.removeChannelFromTile(it) },
+                            onNavigateLeftPage = { viewModel.setSection(TvScreenSection.GUIDE) },
+                            onNavigateRightPage = { viewModel.setSection(TvScreenSection.GUIDE) },
+                            modifier = Modifier.fillMaxSize(),
+                            focusRequester = playerFocusRequester
+                        )
+                    }
+
+                    TvScreenSection.GUIDE,
+                    TvScreenSection.SEARCH,
+                    TvScreenSection.SAVED,
+                    TvScreenSection.TABLO -> {
+                        // Unified Primary TV Guide Landing Page with Integrated Search & Settings Hub
+                        GuideScreen(
+                            channels = channels,
+                            airings = airings,
+                            tabloDevice = tabloDevice,
+                            isLoading = isLoadingChannels || isLoadingGuide,
+                            onRefresh = { viewModel.refreshChannelsAndGuide() },
+                            onOpenSettings = { showSettingsHub = true },
+                            focusRequester = guideFocusRequester,
+                            onWatchChannel = { viewModel.tuneChannelFullscreen(it) },
+                            onAssignToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
+                            onBack = {
+                                // If already watching video in background, back returns to video; otherwise soft refresh
+                                if (activeChannels.any { it != null }) {
+                                    viewModel.setSection(TvScreenSection.MULTIVIEW)
+                                }
+                            },
+                            onRequestTopNav = {
+                                showSettingsHub = true
+                            },
+                            onNavigateLeftPage = { /* Single primary page */ },
+                            onNavigateRightPage = { /* Single primary page */ },
                             modifier = Modifier.fillMaxSize()
-                        ) { section ->
-                            when (section) {
-                                TvScreenSection.GUIDE -> {
-                                    GuideScreen(
-                                        channels = channels,
-                                        airings = airings,
-                                        tabloDevice = tabloDevice,
-                                        isLoading = isLoadingChannels || isLoadingGuide,
-                                        onRefresh = { viewModel.refreshChannelsAndGuide() },
-                                        focusRequester = contentFocusRequester,
-                                        onWatchChannel = { viewModel.tuneChannelFullscreen(it) },
-                                        onAssignToTile = { ch, tile -> viewModel.assignChannelToTile(ch, tile) },
-                                        onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
-                                        onRequestTopNav = {
-                                            navFocusRequesters[TvScreenSection.GUIDE]?.safeRequest()
-                                        },
-                                        onNavigateLeftPage = {
-                                            handleSectionSelect(TvScreenSection.MULTIVIEW)
-                                            navFocusRequesters[TvScreenSection.MULTIVIEW]?.safeRequest()
-                                        },
-                                        onNavigateRightPage = {
-                                            handleSectionSelect(TvScreenSection.SEARCH)
-                                            navFocusRequesters[TvScreenSection.SEARCH]?.safeRequest()
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-
-                                TvScreenSection.SEARCH -> {
-                                    SearchScreen(
-                                        channels = channels,
-                                        airings = airings,
-                                        onSelectChannel = { viewModel.tuneChannelFullscreen(it) },
-                                        onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
-                                        focusRequester = contentFocusRequester,
-                                        onRequestTopNav = {
-                                            navFocusRequesters[TvScreenSection.SEARCH]?.safeRequest()
-                                        },
-                                        onNavigateLeftPage = {
-                                            handleSectionSelect(TvScreenSection.GUIDE)
-                                            navFocusRequesters[TvScreenSection.GUIDE]?.safeRequest()
-                                        },
-                                        onNavigateRightPage = {
-                                            handleSectionSelect(TvScreenSection.SAVED)
-                                            navFocusRequesters[TvScreenSection.SAVED]?.safeRequest()
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-
-                                TvScreenSection.SAVED -> {
-                                    SavedMultiviewsScreen(
-                                        savedItems = savedMultiviews,
-                                        currentChannels = activeChannels,
-                                        currentLayout = currentLayout,
-                                        onLoadMultiview = { viewModel.loadSavedMultiview(it) },
-                                        onSaveNewMultiview = { name, _, _ -> viewModel.saveCurrentMultiview(name) },
-                                        onRenameMultiview = { id, name -> viewModel.renameSavedMultiview(id, name) },
-                                        onDeleteMultiview = { id -> viewModel.deleteSavedMultiview(id) },
-                                        onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
-                                        focusRequester = contentFocusRequester,
-                                        onRequestTopNav = {
-                                            navFocusRequesters[TvScreenSection.SAVED]?.safeRequest()
-                                        },
-                                        onNavigateLeftPage = {
-                                            handleSectionSelect(TvScreenSection.SEARCH)
-                                            navFocusRequesters[TvScreenSection.SEARCH]?.safeRequest()
-                                        },
-                                        onNavigateRightPage = {
-                                            handleSectionSelect(TvScreenSection.TABLO)
-                                            navFocusRequesters[TvScreenSection.TABLO]?.safeRequest()
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-
-                                TvScreenSection.TABLO -> {
-                                    TabloConnectionScreen(
-                                        currentDevice = tabloDevice,
-                                        discoveredDevices = discoveredDevices,
-                                        isScanning = isScanning,
-                                        isConnecting = isConnecting,
-                                        isLoggingIn = isLoggingIn,
-                                        connectionError = connectionError,
-                                        loginError = loginError,
-                                        onStartScan = { viewModel.startDiscovery() },
-                                        onSelectDevice = { viewModel.selectDevice(it) },
-                                        onManualConnect = { ip, port -> viewModel.connectDirectIp(ip, port) },
-                                        onLoginAccount = { email, pass -> viewModel.loginTabloAccount(email, pass) },
-                                        onDisconnect = { viewModel.disconnect() },
-                                        focusRequester = contentFocusRequester,
-                                        onBack = {
-                                            if (tabloDevice != null) {
-                                                viewModel.setSection(TvScreenSection.MULTIVIEW)
-                                            }
-                                        },
-                                        onRequestTopNav = {
-                                            navFocusRequesters[TvScreenSection.TABLO]?.safeRequest()
-                                        },
-                                        onNavigateLeftPage = {
-                                            handleSectionSelect(TvScreenSection.SAVED)
-                                            navFocusRequesters[TvScreenSection.SAVED]?.safeRequest()
-                                        },
-                                        onNavigateRightPage = {
-                                            handleSectionSelect(TvScreenSection.MULTIVIEW)
-                                            navFocusRequesters[TvScreenSection.MULTIVIEW]?.safeRequest()
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-
-                                TvScreenSection.MULTIVIEW -> {}
-                            }
-                        }
+                        )
                     }
                 }
             }
+        }
+
+        // Consolidated Settings & Multiview Hub Overlay Modal
+        if (showSettingsHub) {
+            SettingsHubOverlay(
+                tabloDevice = tabloDevice,
+                allChannels = channels,
+                savedMultiviews = savedMultiviews,
+                onDismiss = { showSettingsHub = false },
+                onLaunchMultiview = { item ->
+                    showSettingsHub = false
+                    viewModel.loadSavedMultiview(item)
+                },
+                onSaveMultiview = { name, layout, chList ->
+                    viewModel.saveCustomMultiview(name, layout, chList)
+                },
+                onDeleteMultiview = { id ->
+                    viewModel.deleteSavedMultiview(id)
+                },
+                onRenameMultiview = { id, name ->
+                    viewModel.renameSavedMultiview(id, name)
+                },
+                onManualConnect = { ip, port -> viewModel.connectDirectIp(ip, port) },
+                onLoginAccount = { email, pass -> viewModel.loginTabloAccount(email, pass) },
+                onDisconnect = {
+                    showSettingsHub = false
+                    viewModel.disconnect()
+                }
+            )
         }
 
         // Quick Save Multiview Modal

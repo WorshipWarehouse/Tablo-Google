@@ -303,8 +303,8 @@ fun TvPlayerControlsOverlay(
                     // 3. MULTIVIEW BUTTON (Opens 2-4 Channel Manager)
                     val multiviewSummary = when (layoutType) {
                         MultiviewLayoutType.SOLO -> "Multiview"
-                        MultiviewLayoutType.HORIZONTAL_2_UP -> "Multiview (2)"
-                        MultiviewLayoutType.PRIMARY_1_PLUS_2 -> "Multiview (3)"
+                        MultiviewLayoutType.HORIZONTAL_2_UP, MultiviewLayoutType.PIP -> "Multiview (2)"
+                        MultiviewLayoutType.PRIMARY_1_PLUS_2, MultiviewLayoutType.VERTICAL_3_UP -> "Multiview (3)"
                         MultiviewLayoutType.PRIMARY_1_PLUS_3, MultiviewLayoutType.GRID_2X2 -> "Multiview (4)"
                     }
                     PlayerControlButton(
@@ -569,8 +569,8 @@ private fun MultiviewConfigPanel(
             // Step 2: Tile Slots
             val slotCount = when (currentLayout) {
                 MultiviewLayoutType.SOLO -> 1
-                MultiviewLayoutType.HORIZONTAL_2_UP -> 2
-                MultiviewLayoutType.PRIMARY_1_PLUS_2 -> 3
+                MultiviewLayoutType.HORIZONTAL_2_UP, MultiviewLayoutType.PIP -> 2
+                MultiviewLayoutType.PRIMARY_1_PLUS_2, MultiviewLayoutType.VERTICAL_3_UP -> 3
                 MultiviewLayoutType.PRIMARY_1_PLUS_3, MultiviewLayoutType.GRID_2X2 -> 4
             }
 

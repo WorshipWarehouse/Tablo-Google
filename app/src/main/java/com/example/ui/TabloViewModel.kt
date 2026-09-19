@@ -369,6 +369,18 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveCustomMultiview(name: String, layout: MultiviewLayoutType, channels: List<TabloChannel>) {
+        viewModelScope.launch {
+            val item = SavedMultiviewItem(
+                name = name,
+                layoutType = layout,
+                channels = channels,
+                preferredAudioChannelId = channels.firstOrNull()?.channelId ?: ""
+            )
+            savedRepository.saveMultiview(item)
+        }
+    }
+
     fun loadSavedMultiview(item: SavedMultiviewItem) {
         viewModelScope.launch {
             _activeMultiviewChannels.value = List(4) { index -> item.channels.getOrNull(index) }
