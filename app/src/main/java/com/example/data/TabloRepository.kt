@@ -41,6 +41,7 @@ class TabloRepository(
     private val discoveryManager: TabloDiscoveryManager = TabloDiscoveryManager(apiService)
 ) {
     private val rawHttpClient = OkHttpClient.Builder()
+        .addInterceptor(com.example.data.remote.DiagnosticsInterceptor())
         .connectTimeout(6, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
@@ -51,6 +52,7 @@ class TabloRepository(
 
         fun createDefaultApiService(): TabloApiService {
             val okHttpClient = OkHttpClient.Builder()
+                .addInterceptor(com.example.data.remote.DiagnosticsInterceptor())
                 .connectTimeout(6, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)
                 .build()
@@ -93,6 +95,25 @@ class TabloRepository(
             }
         }
         null
+    }
+
+    private suspend fun probeLivePort(host: String, candidatePort: Int): Int {
+        val portsToTry = listOf(8887, 8885, candidatePort).distinct()
+        for (p in portsToTry) {
+            val testUrl = "http://$host:$p/server/info"
+            try {
+                val request = Request.Builder().url(testUrl).get().build()
+                rawHttpClient.newCall(request).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        Log.i("TabloRepository", "Probed live port $p for $host")
+                        return p
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d("TabloRepository", "Port probe $p failed for $host: ${e.message}")
+            }
+        }
+        return candidatePort
     }
 
     suspend fun loginTabloAccount(email: String, password: String): TabloResult<List<TabloDevice>> = withContext(Dispatchers.IO) {
@@ -142,7 +163,7 @@ class TabloRepository(
                             Log.w("TabloRepository", "Account select failed for device $sid: ${e.message}")
                         }
 
-                        // Parse local URL (e.g. http://192.168.1.50:8885)
+                        // Parse local URL (e.g. http://192.168.1.50:8885) and probe live port (8887 then 8885)
                         var host = "192.168.1.1"
                         var port = 8885
                         if (!dev.url.isNullOrBlank()) {
@@ -155,13 +176,15 @@ class TabloRepository(
                             }
                         }
 
+                        val livePort = probeLivePort(host, port)
+
                         val gen4Device = TabloDevice(
                             serverId = sid,
                             name = dev.name?.ifBlank { null } ?: "Tablo 4th Gen ($sid)",
                             model = "Tablo 4th Gen",
                             host = host,
-                            port = port,
-                            streamingPort = port,
+                            port = livePort,
+                            streamingPort = 80,
                             tunerCount = 4,
                             activeTuners = 0,
                             isConnected = true,
@@ -380,38 +403,84 @@ class TabloRepository(
         return channels
     }
 
+    data class WatchSessionResult(
+        val playlistUrl: String,
+        val sessionToken: String? = null
+    )
+
     suspend fun fetchGuideAirings(
         device: TabloDevice,
         channelIds: List<String>,
         windowStart: Long,
         windowEnd: Long
     ): TabloResult<List<TabloAiring>> = withContext(Dispatchers.IO) {
-        val baseUrl = device.localBaseUrl
         val channelSet = channelIds.toSet()
         val now = System.currentTimeMillis()
         val airingsFound = mutableListOf<TabloAiring>()
 
-        // 1. Tablo Gen 4 Cloud Guide (if tokens available)
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val dateStr = sdf.format(java.util.Date(now))
+
+        // 1. Cloud Airings Endpoint FIRST for Tablo Gen 4
         if (device.isGen4 && !device.lighthouseToken.isNullOrBlank() && !device.accountToken.isNullOrBlank()) {
             try {
-                val channelsUrl = "${TabloGen4Auth.CLOUD_HOST}/api/v2/account/${device.lighthouseToken}/guide/channels/"
-                val cloudChannels = apiService.getGen4Channels(
-                    url = channelsUrl,
-                    userAgent = TabloGen4Auth.USER_AGENT_CLOUD,
-                    authorization = "Bearer ${device.accountToken}",
-                    lighthouse = device.lighthouseToken
-                )
-
-                for (ch in cloudChannels) {
-                    val rawAirings = ch.airings ?: ch.programs ?: ch.schedule
-                    if (rawAirings != null && rawAirings.isNotEmpty()) {
+                for (channelId in channelSet) {
+                    val cloudAiringsUrl = "${TabloGen4Auth.CLOUD_HOST}/api/v2/account/guide/channels/$channelId/airings/$dateStr/"
+                    try {
+                        val rawAirings = apiService.getGen4CloudAirings(
+                            url = cloudAiringsUrl,
+                            userAgent = TabloGen4Auth.USER_AGENT_CLOUD,
+                            authorization = "Bearer ${device.accountToken}",
+                            lighthouse = device.lighthouseToken
+                        )
                         for (raw in rawAirings) {
-                            TabloApiMapper.airingFromGen4Cloud(ch.identifier, raw, now)?.let { airing ->
-                                if (airing.channelId in channelSet && airing.endTimeMillis > windowStart && airing.startTimeMillis < windowEnd) {
+                            TabloApiMapper.airingFromGen4Cloud(channelId, raw, now)?.let { airing ->
+                                if (airing.endTimeMillis > windowStart && airing.startTimeMillis < windowEnd) {
                                     airingsFound.add(airing)
                                 }
                             }
                         }
+                    } catch (e: Exception) {
+                        Log.w("TabloRepository", "Cloud airings fetch failed for channel $channelId: ${e.message}")
+                    }
+                }
+
+                if (airingsFound.isNotEmpty()) {
+                    Log.i("TabloRepository", "Successfully fetched ${airingsFound.size} cloud airings across channels.")
+                    return@withContext TabloResult.Success(
+                        airingsFound.sortedWith(compareBy({ it.channelId }, { it.startTimeMillis }))
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w("TabloRepository", "Cloud airings fetch error: ${e.message}")
+            }
+        }
+
+        // 2. Local Fallback Endpoint (/views/guide/channels/{id}/airings?date={YYYY-MM-DD}&state=requested)
+        if (device.isGen4 && !device.lighthouseToken.isNullOrBlank()) {
+            try {
+                for (channelId in channelSet) {
+                    val path = "/views/guide/channels/$channelId/airings?date=$dateStr&state=requested"
+                    val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("GET", path, "")
+                    val localAiringsUrl = "${device.localBaseUrl}$path"
+                    try {
+                        val localAirings = apiService.getGen4LocalAirings(
+                            url = localAiringsUrl,
+                            userAgent = TabloGen4Auth.USER_AGENT_WATCH,
+                            authorization = authHeader,
+                            date = dateHeader,
+                            lighthouse = device.lighthouseToken
+                        )
+                        for (raw in localAirings) {
+                            TabloApiMapper.airingFromGen4Cloud(channelId, raw, now)?.let { airing ->
+                                if (airing.endTimeMillis > windowStart && airing.startTimeMillis < windowEnd) {
+                                    airingsFound.add(airing)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w("TabloRepository", "Local airings fallback failed for channel $channelId: ${e.message}")
                     }
                 }
 
@@ -421,93 +490,18 @@ class TabloRepository(
                     )
                 }
             } catch (e: Exception) {
-                Log.w("TabloRepository", "Gen 4 Cloud Guide fetch airings error: ${e.message}")
+                Log.d("TabloRepository", "Local airings fallback error: ${e.message}")
             }
-        }
-
-        // 2. Tablo Gen 4 signed local request OR Tablo Legacy local request
-        try {
-            val airingPaths = if (device.isGen4) {
-                fetchGen4SignedPaths(device, "/guide/airings")
-            } else {
-                apiService.getAiringPaths("$baseUrl/guide/airings")
-            }
-
-            if (airingPaths.isNotEmpty()) {
-                val maxKept = if (channelSet.isEmpty()) 600 else (channelSet.size * 10).coerceIn(400, 4000)
-                var processedChunks = 0
-
-                for (chunkStart in airingPaths.indices step BATCH_SIZE) {
-                    if (processedChunks >= MAX_BATCH_CHUNKS) break
-                    if (airingsFound.size >= maxKept && processedChunks >= 6) break
-                    val chunk = airingPaths.subList(chunkStart, minOf(chunkStart + BATCH_SIZE, airingPaths.size))
-                    processedChunks++
-
-                    val batch = if (device.isGen4) {
-                        fetchGen4SignedBatchAirings(device, chunk)
-                    } else {
-                        runCatching { apiService.postBatch("$baseUrl/batch", chunk) }.getOrNull()
-                    } ?: continue
-
-                    for ((path, detail) in batch) {
-                        val airing = TabloApiMapper.airingFromDetail(path, detail, now) ?: continue
-                        if (airing.channelId !in channelSet) continue
-                        if (airing.endTimeMillis > windowStart && airing.startTimeMillis < windowEnd) {
-                            airingsFound.add(airing)
-                        }
-                    }
-                }
-            }
-
-            if (airingsFound.isNotEmpty()) {
-                return@withContext TabloResult.Success(
-                    airingsFound.sortedWith(compareBy({ it.channelId }, { it.startTimeMillis }))
-                )
-            }
-        } catch (e: Exception) {
-            Log.d("TabloRepository", "Guide airings fetch failed: ${e.message}")
         }
 
         TabloResult.Success(emptyList())
     }
 
-    private suspend fun fetchGen4SignedBatchAirings(device: TabloDevice, paths: List<String>): Map<String, TabloAiringDetailResponse>? {
-        val batchJson = org.json.JSONArray(paths).toString()
-        val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("POST", "/batch", batchJson)
-        val request = Request.Builder()
-            .url("${device.localBaseUrl}/batch")
-            .post(batchJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .header("Authorization", authHeader)
-            .header("Date", dateHeader)
-            .header("Content-Type", "application/json")
-            .header("User-Agent", TabloGen4Auth.USER_AGENT_WATCH)
-            .header("Accept", "application/json, */*")
-            .build()
-        return try {
-            rawHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string().orEmpty()
-                    val moshi = Moshi.Builder().build()
-                    val type = com.squareup.moshi.Types.newParameterizedType(
-                        Map::class.java,
-                        String::class.java,
-                        TabloAiringDetailResponse::class.java
-                    )
-                    val adapter: JsonAdapter<Map<String, TabloAiringDetailResponse>> = moshi.adapter(type)
-                    adapter.fromJson(body)
-                } else null
-            }
-        } catch (e: Exception) {
-            Log.w("TabloRepository", "Gen 4 signed batch airings failed: ${e.message}")
-            null
-        }
-    }
-
     /**
-     * Requests a live watch stream via either Gen 4 signed HMAC watch or legacy watch endpoint.
-     * Returns the device-provided playlist URL (HLS .m3u8) or fallback stream.
+     * Requests a live watch stream via Gen 4 signed HMAC watch endpoint or legacy endpoint.
+     * Returns a WatchSessionResult containing the playlist URL and session token.
      */
-    suspend fun fetchWatchStreamUrl(device: TabloDevice, channel: TabloChannel): String? =
+    suspend fun fetchWatchStreamSession(device: TabloDevice, channel: TabloChannel): WatchSessionResult? =
         withContext(Dispatchers.IO) {
             val channelIdentifier = channel.identifier?.substringAfterLast("/")
                 ?: channel.channelPath.substringAfterLast("/")
@@ -515,42 +509,32 @@ class TabloRepository(
 
             // 1. Tablo Gen 4 HMAC-MD5 signed watch flow
             if (device.isGen4 || channel.identifier != null) {
-                val watchAttempts = listOf(
-                    Triple("/guide/channels/$channelIdentifier/watch", "${device.localBaseUrl}/guide/channels/$channelIdentifier/watch", TabloGen4Auth.makeWatchBody(device.clientId)),
-                    Triple("/guide/channels/$channelIdentifier/watch", "${device.localBaseUrl}/guide/channels/$channelIdentifier/watch?lh", TabloGen4Auth.makeWatchBody(device.clientId)),
-                    Triple("/guide/channels/$channelIdentifier/watch", "${device.localBaseUrl}/guide/channels/$channelIdentifier/watch", "{}")
-                )
+                val path = "/guide/channels/$channelIdentifier/watch"
+                val watchUrl = "${device.localBaseUrl}$path"
+                val bodyStr = TabloGen4Auth.makeWatchBody(device.clientId)
+                val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("POST", path, bodyStr)
+                val lh = device.lighthouseToken ?: ""
 
-                for ((signPath, requestUrl, bodyContent) in watchAttempts) {
-                    try {
-                        val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("POST", signPath, bodyContent)
-                        val requestBody = bodyContent.toRequestBody("application/json; charset=utf-8".toMediaType())
-                        val request = Request.Builder()
-                            .url(requestUrl)
-                            .post(requestBody)
-                            .header("Authorization", authHeader)
-                            .header("Date", dateHeader)
-                            .header("Content-Type", "application/json")
-                            .header("User-Agent", TabloGen4Auth.USER_AGENT_WATCH)
-                            .header("Accept", "application/json, */*")
-                            .header("Connection", "keep-alive")
-                            .build()
+                try {
+                    val reqBody = bodyStr.toRequestBody("application/json; charset=utf-8".toMediaType())
+                    val watchResp = apiService.postGen4Watch(
+                        url = watchUrl,
+                        userAgent = TabloGen4Auth.USER_AGENT_WATCH,
+                        authorization = authHeader,
+                        date = dateHeader,
+                        lighthouse = lh,
+                        body = reqBody
+                    )
 
-                        rawHttpClient.newCall(request).execute().use { response ->
-                            val bodyStr = response.body?.string().orEmpty()
-                            Log.i("TabloRepository", "Gen 4 watch response code ${response.code} for $requestUrl: $bodyStr")
-
-                            if (response.isSuccessful && bodyStr.isNotBlank()) {
-                                val playlist = extractPlaylistUrl(bodyStr, device.localBaseUrl)
-                                if (playlist != null) {
-                                    Log.i("TabloRepository", "Obtained Gen 4 live stream: $playlist")
-                                    return@withContext playlist
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.w("TabloRepository", "Gen 4 watch attempt failed ($requestUrl): ${e.message}")
+                    val rawPlaylist = watchResp.playlistUrl
+                    val token = watchResp.token
+                    if (!rawPlaylist.isNullOrBlank()) {
+                        val fullPlaylist = if (rawPlaylist.startsWith("http")) rawPlaylist else "${device.localBaseUrl}$rawPlaylist"
+                        Log.i("TabloRepository", "Obtained Gen 4 live stream: $fullPlaylist (session token: $token)")
+                        return@withContext WatchSessionResult(fullPlaylist, token)
                     }
+                } catch (e: Exception) {
+                    Log.w("TabloRepository", "Gen 4 watch attempt failed ($watchUrl): ${e.message}")
                 }
             }
 
@@ -563,7 +547,7 @@ class TabloRepository(
                 val playlist = response.playlistUrl
                 if (!playlist.isNullOrBlank()) {
                     val fullPlaylist = if (playlist.startsWith("http")) playlist else "${device.streamingBaseUrl}$playlist"
-                    return@withContext fullPlaylist
+                    return@withContext WatchSessionResult(fullPlaylist, response.token)
                 }
             } catch (e: Exception) {
                 Log.d("TabloRepository", "Legacy watch stream request failed for ${channel.channelId}: ${e.message}")
@@ -571,12 +555,60 @@ class TabloRepository(
 
             // 3. Direct channel stream URL if populated
             if (channel.streamUrl.isNotBlank()) {
-                return@withContext channel.streamUrl
+                return@withContext WatchSessionResult(channel.streamUrl)
             }
 
-            // 4. Reliable test stream fallback for live verification when tuner is busy or in demo/emulator
-            return@withContext getFallbackHlsStream(channel)
+            // 4. Test stream fallback
+            WatchSessionResult(getFallbackHlsStream(channel))
         }
+
+    suspend fun fetchWatchStreamUrl(device: TabloDevice, channel: TabloChannel): String? {
+        return fetchWatchStreamSession(device, channel)?.playlistUrl
+    }
+
+    suspend fun sendKeepalive(device: TabloDevice, sessionToken: String) = withContext(Dispatchers.IO) {
+        if (!device.isGen4 || sessionToken.isBlank()) return@withContext
+        val path = "/player/sessions/$sessionToken/keepalive"
+        val keepaliveUrl = "${device.localBaseUrl}$path"
+        val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("POST", path, "")
+        val lh = device.lighthouseToken ?: ""
+        val emptyBody = "".toRequestBody("application/json".toMediaType())
+
+        try {
+            apiService.postGen4Keepalive(
+                url = keepaliveUrl,
+                userAgent = TabloGen4Auth.USER_AGENT_WATCH,
+                authorization = authHeader,
+                date = dateHeader,
+                lighthouse = lh,
+                body = emptyBody
+            )
+            Log.d("TabloRepository", "Keepalive sent for session $sessionToken")
+        } catch (e: Exception) {
+            Log.w("TabloRepository", "Keepalive failed for session $sessionToken: ${e.message}")
+        }
+    }
+
+    suspend fun deleteSession(device: TabloDevice, sessionToken: String) = withContext(Dispatchers.IO) {
+        if (!device.isGen4 || sessionToken.isBlank()) return@withContext
+        val path = "/player/sessions/$sessionToken"
+        val deleteUrl = "${device.localBaseUrl}$path"
+        val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("DELETE", path, "")
+        val lh = device.lighthouseToken ?: ""
+
+        try {
+            apiService.deleteGen4Session(
+                url = deleteUrl,
+                userAgent = TabloGen4Auth.USER_AGENT_WATCH,
+                authorization = authHeader,
+                date = dateHeader,
+                lighthouse = lh
+            )
+            Log.i("TabloRepository", "Session deleted for $sessionToken")
+        } catch (e: Exception) {
+            Log.w("TabloRepository", "Session delete failed for $sessionToken: ${e.message}")
+        }
+    }
 
     private fun extractPlaylistUrl(bodyStr: String, baseUrl: String): String? {
         return try {

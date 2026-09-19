@@ -82,21 +82,21 @@ interface TabloApiService {
     @POST
     suspend fun loginGen4(
         @Url url: String,
-        @retrofit2.http.Header("User-Agent") userAgent: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/2.0.0 (Mobile; iPhone; iOS 16.6)",
         @Body body: TabloGen4LoginRequest
     ): TabloGen4LoginResponse
 
     @GET
     suspend fun getGen4Account(
         @Url url: String,
-        @retrofit2.http.Header("User-Agent") userAgent: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/2.0.0 (Mobile; iPhone; iOS 16.6)",
         @retrofit2.http.Header("Authorization") authorization: String
     ): TabloGen4AccountResponse
 
     @POST
     suspend fun selectGen4Account(
         @Url url: String,
-        @retrofit2.http.Header("User-Agent") userAgent: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/2.0.0 (Mobile; iPhone; iOS 16.6)",
         @retrofit2.http.Header("Authorization") authorization: String,
         @Body body: TabloGen4SelectRequest
     ): TabloGen4SelectResponse
@@ -104,9 +104,55 @@ interface TabloApiService {
     @GET
     suspend fun getGen4Channels(
         @Url url: String,
-        @retrofit2.http.Header("User-Agent") userAgent: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/2.0.0 (Mobile; iPhone; iOS 16.6)",
         @retrofit2.http.Header("Authorization") authorization: String,
         @retrofit2.http.Header("Lighthouse") lighthouse: String,
         @retrofit2.http.Header("Accept") accept: String = "*/*"
     ): List<TabloGen4CloudChannel>
+
+    @GET
+    suspend fun getGen4CloudAirings(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/2.0.0 (Mobile; iPhone; iOS 16.6)",
+        @retrofit2.http.Header("Authorization") authorization: String,
+        @retrofit2.http.Header("Lighthouse") lighthouse: String
+    ): List<TabloGen4CloudAiring>
+
+    @GET
+    suspend fun getGen4LocalAirings(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/1.7.0",
+        @retrofit2.http.Header("Authorization") authorization: String,
+        @retrofit2.http.Header("Date") date: String,
+        @retrofit2.http.Header("Lighthouse") lighthouse: String
+    ): List<TabloGen4CloudAiring>
+
+    @POST
+    suspend fun postGen4Watch(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/1.7.0",
+        @retrofit2.http.Header("Authorization") authorization: String,
+        @retrofit2.http.Header("Date") date: String,
+        @retrofit2.http.Header("Lighthouse") lighthouse: String,
+        @Body body: RequestBody
+    ): TabloGen4WatchResponse
+
+    @POST
+    suspend fun postGen4Keepalive(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/1.7.0",
+        @retrofit2.http.Header("Authorization") authorization: String,
+        @retrofit2.http.Header("Date") date: String,
+        @retrofit2.http.Header("Lighthouse") lighthouse: String,
+        @Body body: RequestBody
+    ): okhttp3.ResponseBody
+
+    @retrofit2.http.DELETE
+    suspend fun deleteGen4Session(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/1.7.0",
+        @retrofit2.http.Header("Authorization") authorization: String,
+        @retrofit2.http.Header("Date") date: String,
+        @retrofit2.http.Header("Lighthouse") lighthouse: String
+    ): okhttp3.ResponseBody
 }

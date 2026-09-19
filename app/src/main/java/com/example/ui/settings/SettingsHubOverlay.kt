@@ -49,7 +49,8 @@ enum class SettingsHubTab(val title: String, val icon: ImageVector) {
     SAVED_PRESETS("Saved Multiviews", Icons.Default.Bookmark),
     BUILDER("Multiview Builder", Icons.Default.DashboardCustomize),
     TABLO_DEVICE("Tablo & Tuners", Icons.Default.Router),
-    PREFERENCES("Preferences", Icons.Default.Tune)
+    PREFERENCES("Preferences", Icons.Default.Tune),
+    DIAGNOSTICS("API Diagnostics", Icons.Default.BugReport)
 }
 
 /**
@@ -331,6 +332,14 @@ fun SettingsHubOverlay(
                                 }
                                 SettingsHubTab.PREFERENCES -> {
                                     PreferencesPane(
+                                        focusRequester = contentFocusRequester,
+                                        onRequestSidebar = {
+                                            tabFocusRequesters[activeTab]?.safeRequest()
+                                        }
+                                    )
+                                }
+                                SettingsHubTab.DIAGNOSTICS -> {
+                                    DiagnosticsPane(
                                         focusRequester = contentFocusRequester,
                                         onRequestSidebar = {
                                             tabFocusRequesters[activeTab]?.safeRequest()
