@@ -83,6 +83,8 @@ fun GuideScreen(
     onAssignToTile: (TabloChannel, Int) -> Unit,
     onBack: () -> Unit,
     onRequestTopNav: () -> Unit = {},
+    onNavigateLeftPage: () -> Unit = {},
+    onNavigateRightPage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val windowStart = GuideTiming.windowStartMs()
@@ -142,13 +144,28 @@ fun GuideScreen(
                         }
                         true
                     }
-                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        val dir = if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1
-                        selectedSlotIndex = (selectedSlotIndex + dir).coerceIn(0, GuideTiming.SLOT_COUNT - 1)
-                        val viewport = contentWidthDp.coerceAtMost(1000f).toInt()
-                        val maxScroll = maxOf(0, timelineWidth + CHANNEL_COLUMN_WIDTH.toInt() - viewport)
-                        val target = (selectedSlotIndex * SLOT_WIDTH - viewport / 3f).coerceIn(0f, maxScroll.toFloat()).toInt()
-                        scope.launch { scrollState.animateScrollTo(target) }
+                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        if (selectedSlotIndex == 0) {
+                            onNavigateLeftPage()
+                        } else {
+                            selectedSlotIndex--
+                            val viewport = contentWidthDp.coerceAtMost(1000f).toInt()
+                            val maxScroll = maxOf(0, timelineWidth + CHANNEL_COLUMN_WIDTH.toInt() - viewport)
+                            val target = (selectedSlotIndex * SLOT_WIDTH - viewport / 3f).coerceIn(0f, maxScroll.toFloat()).toInt()
+                            scope.launch { scrollState.animateScrollTo(target) }
+                        }
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (selectedSlotIndex >= GuideTiming.SLOT_COUNT - 1) {
+                            onNavigateRightPage()
+                        } else {
+                            selectedSlotIndex++
+                            val viewport = contentWidthDp.coerceAtMost(1000f).toInt()
+                            val maxScroll = maxOf(0, timelineWidth + CHANNEL_COLUMN_WIDTH.toInt() - viewport)
+                            val target = (selectedSlotIndex * SLOT_WIDTH - viewport / 3f).coerceIn(0f, maxScroll.toFloat()).toInt()
+                            scope.launch { scrollState.animateScrollTo(target) }
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {

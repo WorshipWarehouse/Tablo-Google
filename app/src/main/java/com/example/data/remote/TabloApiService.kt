@@ -78,4 +78,35 @@ interface TabloApiService {
         @Url url: String,
         @Body body: TabloCloudLoginRequest
     ): TabloCloudLoginResponse
+
+    @POST
+    suspend fun loginGen4(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String,
+        @Body body: TabloGen4LoginRequest
+    ): TabloGen4LoginResponse
+
+    @GET
+    suspend fun getGen4Account(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String,
+        @retrofit2.http.Header("Authorization") authorization: String
+    ): TabloGen4AccountResponse
+
+    @POST
+    suspend fun selectGen4Account(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String,
+        @retrofit2.http.Header("Authorization") authorization: String,
+        @Body body: TabloGen4SelectRequest
+    ): TabloGen4SelectResponse
+
+    @GET
+    suspend fun getGen4Channels(
+        @Url url: String,
+        @retrofit2.http.Header("User-Agent") userAgent: String,
+        @retrofit2.http.Header("Authorization") authorization: String,
+        @retrofit2.http.Header("Lighthouse") lighthouse: String,
+        @retrofit2.http.Header("Accept") accept: String = "*/*"
+    ): List<TabloGen4CloudChannel>
 }

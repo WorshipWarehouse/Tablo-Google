@@ -156,9 +156,13 @@ fun TvQuickBar(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TvScreenSection.values().forEach { section ->
-                            val prev = section.previous()
-                            val next = section.next()
+                        val allSections = TvScreenSection.values()
+                        allSections.forEachIndexed { index, section ->
+                            val prevIndex = if (index > 0) index - 1 else allSections.size - 1
+                            val nextIndex = if (index < allSections.size - 1) index + 1 else 0
+                            val prevSection = allSections[prevIndex]
+                            val nextSection = allSections[nextIndex]
+
                             TvNavPill(
                                 label = section.label,
                                 icon = section.icon,
@@ -166,8 +170,14 @@ fun TvQuickBar(
                                 onClick = { onSelectSection(section) },
                                 focusRequester = navFocusRequesters[section],
                                 onKeyDown = { onNavigateDown(section) },
-                                onKeyLeft = prev?.let { p -> { navFocusRequesters[p]?.safeRequest() } },
-                                onKeyRight = next?.let { n -> { navFocusRequesters[n]?.safeRequest() } }
+                                onKeyLeft = {
+                                    onSelectSection(prevSection)
+                                    navFocusRequesters[prevSection]?.safeRequest()
+                                },
+                                onKeyRight = {
+                                    onSelectSection(nextSection)
+                                    navFocusRequesters[nextSection]?.safeRequest()
+                                }
                             )
                         }
                     }

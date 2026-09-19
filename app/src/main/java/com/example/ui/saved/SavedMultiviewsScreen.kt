@@ -75,6 +75,8 @@ fun SavedMultiviewsScreen(
     onDeleteMultiview: (Long) -> Unit,
     onBack: () -> Unit,
     onRequestTopNav: () -> Unit = {},
+    onNavigateLeftPage: () -> Unit = {},
+    onNavigateRightPage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }

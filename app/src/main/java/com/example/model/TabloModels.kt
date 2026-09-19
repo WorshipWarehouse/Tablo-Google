@@ -17,7 +17,11 @@ data class TabloDevice(
     val tunerCount: Int = 4,
     val activeTuners: Int = 0,
     val isConnected: Boolean = false,
-    val firmware: String = ""
+    val firmware: String = "",
+    val lighthouseToken: String? = null,
+    val accountToken: String? = null,
+    val clientId: String = "",
+    val isGen4: Boolean = false
 ) {
     val localBaseUrl: String
         get() = "http://$host:$port"
@@ -35,10 +39,15 @@ data class TabloChannel(
     val resolution: String = "",
     val channelPath: String = "/guide/channels/$channelId",
     val logoUrl: String? = null,
-    val streamUrl: String = ""
+    val streamUrl: String = "",
+    val identifier: String? = null,
+    val isOtt: Boolean = false
 ) {
     val displayChannel: String
-        get() = "$majorNumber.$minorNumber"
+        get() = if (majorNumber == 0 && minorNumber == 0) callSign else "$majorNumber.$minorNumber"
+
+    val displayName: String
+        get() = if (majorNumber == 0 && minorNumber == 0) callSign else "$majorNumber.$minorNumber $callSign"
 }
 
 data class TabloAiring(

@@ -190,3 +190,78 @@ data class TabloCloudDevice(
     @Json(name = "device_token") val deviceToken: String? = null,
     @Json(name = "server_version") val serverVersion: String? = null
 )
+
+// ==========================================
+// Tablo Gen 4 (LighthouseTV) Cloud & Local DTOs
+// ==========================================
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4LoginRequest(
+    @Json(name = "email") val email: String,
+    @Json(name = "password") val password: String
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4LoginResponse(
+    @Json(name = "token_type") val tokenType: String? = null,
+    @Json(name = "access_token") val accessToken: String? = null,
+    @Json(name = "message") val message: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4Profile(
+    @Json(name = "identifier") val identifier: String,
+    @Json(name = "name") val name: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4AccountDevice(
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "serverId") val serverId: String? = null,
+    @Json(name = "url") val url: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4AccountResponse(
+    @Json(name = "profiles") val profiles: List<TabloGen4Profile>? = null,
+    @Json(name = "devices") val devices: List<TabloGen4AccountDevice>? = null,
+    @Json(name = "message") val message: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4SelectRequest(
+    @Json(name = "pid") val pid: String,
+    @Json(name = "sid") val sid: String
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4SelectResponse(
+    @Json(name = "token") val token: String? = null,
+    @Json(name = "message") val message: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4ChannelInfo(
+    @Json(name = "major") val major: Int? = null,
+    @Json(name = "minor") val minor: Int? = null,
+    @Json(name = "callSign") val callSign: String? = null,
+    @Json(name = "network") val network: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4CloudChannel(
+    @Json(name = "identifier") val identifier: String,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "kind") val kind: String = "ota",
+    @Json(name = "ota") val ota: TabloGen4ChannelInfo? = null,
+    @Json(name = "ott") val ott: TabloGen4ChannelInfo? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TabloGen4WatchResponse(
+    @Json(name = "playlist_url") val playlistUrl: String? = null,
+    @Json(name = "token") val token: String? = null,
+    @Json(name = "expires") val expires: String? = null,
+    @Json(name = "keepalive") val keepalive: Long? = null
+)
+

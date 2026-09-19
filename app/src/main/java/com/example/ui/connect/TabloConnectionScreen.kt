@@ -89,6 +89,8 @@ fun TabloConnectionScreen(
     onDisconnect: () -> Unit,
     onBack: () -> Unit,
     onRequestTopNav: () -> Unit = {},
+    onNavigateLeftPage: () -> Unit = {},
+    onNavigateRightPage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedMode by remember { mutableStateOf(ConnectMode.AUTO_DISCOVER) }

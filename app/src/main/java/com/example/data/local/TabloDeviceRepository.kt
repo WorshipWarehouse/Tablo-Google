@@ -21,7 +21,11 @@ class TabloDeviceRepository(private val dao: TabloDeviceDao) {
                 streamingPort = device.streamingPort,
                 tunerCount = device.tunerCount,
                 isConnected = device.isConnected,
-                firmware = device.firmware
+                firmware = device.firmware,
+                lighthouseToken = device.lighthouseToken,
+                accountToken = device.accountToken,
+                clientId = device.clientId,
+                isGen4 = device.isGen4
             )
         )
     }
@@ -41,5 +45,9 @@ private fun TabloDeviceEntity.toModel(): TabloDevice = TabloDevice(
     tunerCount = tunerCount,
     activeTuners = 0,
     isConnected = isConnected,
-    firmware = firmware
+    firmware = firmware,
+    lighthouseToken = lighthouseToken,
+    accountToken = accountToken,
+    clientId = clientId,
+    isGen4 = isGen4
 )

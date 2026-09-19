@@ -68,6 +68,8 @@ fun MultiviewScreen(
     onSelectSolo: (Int) -> Unit,
     onBackFromSolo: () -> Unit,
     onRequestQuickBar: (fromLeft: Boolean) -> Unit,
+    onNavigateLeftPage: () -> Unit = {},
+    onNavigateRightPage: () -> Unit = {},
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null
 ) {
@@ -167,22 +169,34 @@ fun MultiviewScreen(
                                 } else if (focusedTileIndex == 3) {
                                     onFocusChanged(2)
                                     true
-                                } else false
+                                } else {
+                                    onNavigateLeftPage()
+                                    true
+                                }
                             }
                             MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
                                 if (focusedTileIndex > 0) {
                                     // Move back to Primary large tile
                                     onFocusChanged(0)
                                     true
-                                } else false
+                                } else {
+                                    onNavigateLeftPage()
+                                    true
+                                }
                             }
                             MultiviewLayoutType.HORIZONTAL_2_UP -> {
                                 if (focusedTileIndex == 1) {
                                     onFocusChanged(0)
                                     true
-                                } else false
+                                } else {
+                                    onNavigateLeftPage()
+                                    true
+                                }
                             }
-                            else -> false
+                            MultiviewLayoutType.SOLO -> {
+                                onNavigateLeftPage()
+                                true
+                            }
                         }
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> {
@@ -194,22 +208,34 @@ fun MultiviewScreen(
                                 } else if (focusedTileIndex == 2) {
                                     onFocusChanged(3)
                                     true
-                                } else false
+                                } else {
+                                    onNavigateRightPage()
+                                    true
+                                }
                             }
                             MultiviewLayoutType.PRIMARY_1_PLUS_3 -> {
                                 if (focusedTileIndex == 0) {
                                     // Move from large primary to first small tile
                                     onFocusChanged(1)
                                     true
-                                } else false
+                                } else {
+                                    onNavigateRightPage()
+                                    true
+                                }
                             }
                             MultiviewLayoutType.HORIZONTAL_2_UP -> {
                                 if (focusedTileIndex == 0) {
                                     onFocusChanged(1)
                                     true
-                                } else false
+                                } else {
+                                    onNavigateRightPage()
+                                    true
+                                }
                             }
-                            else -> false
+                            MultiviewLayoutType.SOLO -> {
+                                onNavigateRightPage()
+                                true
+                            }
                         }
                     }
                     KeyEvent.KEYCODE_MENU -> {

@@ -14,5 +14,9 @@ data class TabloDeviceEntity(
     val streamingPort: Int,
     val tunerCount: Int,
     val isConnected: Boolean,
-    val firmware: String
+    val firmware: String,
+    val lighthouseToken: String? = null,
+    val accountToken: String? = null,
+    val clientId: String = "",
+    val isGen4: Boolean = false
 )

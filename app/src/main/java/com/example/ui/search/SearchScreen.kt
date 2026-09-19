@@ -64,6 +64,8 @@ fun SearchScreen(
     onSelectChannel: (TabloChannel) -> Unit,
     onBack: () -> Unit,
     onRequestTopNav: () -> Unit = {},
+    onNavigateLeftPage: () -> Unit = {},
+    onNavigateRightPage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
