@@ -150,7 +150,8 @@ fun TabloTvApp(
                             onNavigateRightPage = { /* Single primary page */ },
                             favoriteChannelIds = favoriteChannelIds,
                             onToggleFavorite = { viewModel.toggleFavoriteChannel(it) },
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            activeChannels = activeChannels
                         )
                     }
                 }

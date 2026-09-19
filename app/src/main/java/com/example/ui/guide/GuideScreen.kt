@@ -119,7 +119,8 @@ fun GuideScreen(
     onUpdateFocusedEpgTime: (Long) -> Unit = {},
     favoriteChannelIds: Set<String> = emptySet(),
     onToggleFavorite: (TabloChannel) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    activeChannels: List<TabloChannel?> = emptyList()
 ) {
     val windowStart = remember { GuideTiming.windowStartMs() }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -520,7 +521,8 @@ fun GuideScreen(
                     onAssignToTile(channel, tile)
                     programDetailsDialog = null
                 },
-                onDismiss = { programDetailsDialog = null }
+                onDismiss = { programDetailsDialog = null },
+                activeChannels = activeChannels
             )
         }
     }
@@ -1757,9 +1759,11 @@ private fun Tablo4UProgramDetailsDialog(
     onToggleRecord: () -> Unit,
     onWatch: () -> Unit,
     onAssignTile: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    activeChannels: List<TabloChannel?> = emptyList()
 ) {
     val genreColor = getGenreColor(airing.category)
+    var showReplaceSelection by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -1906,25 +1910,72 @@ private fun Tablo4UProgramDetailsDialog(
                         }
                     }
 
-                    // Multiview Assignment Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Send to Multiview:", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            for (tile in 0..3) {
-                                Button(
-                                    onClick = { onAssignTile(tile) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TvSurface, contentColor = TextPrimary),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(1.dp, TvBorder),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(30.dp)
-                                ) {
-                                    Text("Tile ${tile + 1}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    if (!showReplaceSelection) {
+                        Button(
+                            onClick = {
+                                val isAlreadyInMultiview = activeChannels.any { it?.channelId == channel.channelId }
+                                if (!isAlreadyInMultiview) {
+                                    val firstEmptySlot = activeChannels.indexOfFirst { it == null }
+                                    if (firstEmptySlot != -1) {
+                                        onAssignTile(firstEmptySlot)
+                                    } else {
+                                        showReplaceSelection = true
+                                    }
                                 }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = TvSurface,
+                                contentColor = if (activeChannels.any { it?.channelId == channel.channelId }) TextMuted else TextPrimary
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, TvBorder),
+                            modifier = Modifier.fillMaxWidth().height(38.dp),
+                            enabled = !activeChannels.any { it?.channelId == channel.channelId }
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (activeChannels.any { it?.channelId == channel.channelId }) "Already in Multiview" else "Add to Multiview",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Multiview is full. Select a tile to replace:",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                for (tile in 0..3) {
+                                    val tileChan = activeChannels.getOrNull(tile)
+                                    val label = "Tile ${tile + 1}${tileChan?.let { ": ${it.callSign}" } ?: ""}"
+                                    Button(
+                                        onClick = { onAssignTile(tile) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = TvSurface, contentColor = TextPrimary),
+                                        shape = RoundedCornerShape(6.dp),
+                                        border = BorderStroke(1.dp, TvBorder),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.weight(1f).height(32.dp)
+                                    ) {
+                                        Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+                                }
+                            }
+                            Button(
+                                onClick = { showReplaceSelection = false },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = TextMuted),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.align(Alignment.CenterHorizontally).height(28.dp)
+                            ) {
+                                Text("Cancel", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

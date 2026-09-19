@@ -238,7 +238,7 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
                 val oldToken = sessionTokens[tileIndex]
                 sessionTokens.remove(tileIndex)
 
-                val sessionResult = tabloRepository.fetchWatchStreamSession(device, channel)
+                val sessionResult = tabloRepository.fetchWatchStreamSession(device, channel, tileIndex)
                 val url = sessionResult?.playlistUrl
                 val token = sessionResult?.sessionToken
                 val keepaliveSec = sessionResult?.keepaliveSeconds ?: 10L
@@ -250,8 +250,8 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
                         launch {
                             delay(6000L) // safe delay, ensures ExoPlayer is not starting up on it
                             try {
-                                Log.i("TabloViewModel", "Asynchronous DELETE firing for old session: $oldToken")
-                                tabloRepository.deleteSession(device, oldToken)
+                                Log.i("TabloViewModel", "[Tile $tileIndex] Asynchronous DELETE firing for old session: $oldToken")
+                                tabloRepository.deleteSession(device, oldToken, tileIndex)
                             } catch (e: Exception) {
                                 Log.w("TabloViewModel", "Error deleting old session $oldToken asynchronously: ${e.message}")
                             }
@@ -271,8 +271,8 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
                         launch {
                             delay(6000L) // Safe delay to make sure ExoPlayer isn't starting up on the old session
                             try {
-                                Log.i("TabloViewModel", "Asynchronous DELETE firing for old session (tune transition): $oldToken")
-                                tabloRepository.deleteSession(device, oldToken)
+                                Log.i("TabloViewModel", "[Tile $tileIndex] Asynchronous DELETE firing for old session (tune transition): $oldToken")
+                                tabloRepository.deleteSession(device, oldToken, tileIndex)
                             } catch (e: Exception) {
                                 Log.w("TabloViewModel", "Error deleting old session $oldToken asynchronously: ${e.message}")
                             }
@@ -310,7 +310,7 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
                 delay(4000L) // Wait a short period to make sure the player has stopped referencing it
                 try {
                     Log.i("TabloViewModel", "Asynchronous DELETE firing for explicit stop on tile $tileIndex, session: $token")
-                    tabloRepository.deleteSession(device, token)
+                    tabloRepository.deleteSession(device, token, tileIndex)
                 } catch (e: Exception) {
                     Log.w("TabloViewModel", "Error deleting session $token for tile $tileIndex: ${e.message}")
                 }
@@ -415,26 +415,52 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
         val idx = tileIndex.coerceIn(0, 3)
         playChannelInTile(channel, idx)
         setFocusedTile(idx)
-        if (_currentLayout.value == MultiviewLayoutType.SOLO) {
-            _currentLayout.value = MultiviewLayoutType.HORIZONTAL_2_UP
-        }
+        val activeCount = _activeMultiviewChannels.value.filterNotNull().size
+        setMultiviewChannelsCount(activeCount)
         _isPlaying.value = true
         _currentSection.value = TvScreenSection.MULTIVIEW
     }
 
     fun removeChannelFromTile(tileIndex: Int) {
         if (tileIndex in 0..3) {
-            viewModelScope.launch { stopTileSession(tileIndex) }
-            val slots = _activeMultiviewChannels.value.toMutableList()
-            if (tileIndex < slots.size) {
-                slots[tileIndex] = null
-                _activeMultiviewChannels.value = slots
-            }
-            playerManager.stopTile(tileIndex)
-            _tileErrors.value = _tileErrors.value - tileIndex
-            val filled = slots.mapIndexedNotNull { index, ch -> if (ch != null) index else null }
-            if (filled.isNotEmpty() && _focusedTileIndex.value == tileIndex) {
-                setFocusedTile(filled.first())
+            viewModelScope.launch {
+                // 1. Get the list of remaining non-null channels in order, excluding the removed tileIndex
+                val currentSlots = _activeMultiviewChannels.value
+                val remainingChannels = currentSlots.mapIndexedNotNull { index, channel ->
+                    if (index != tileIndex && channel != null) channel else null
+                }
+
+                // 2. Clear / stop ALL 4 tiles completely to start clean
+                for (i in 0 until 4) {
+                    stopTileSession(i)
+                    playerManager.releaseTile(i)
+                    _tileErrors.value = _tileErrors.value - i
+                }
+
+                // 3. Compact remaining channels into new slots
+                val newSlots = emptyTileSlots().toMutableList()
+                remainingChannels.forEachIndexed { index, channel ->
+                    if (index < 4) {
+                        newSlots[index] = channel
+                    }
+                }
+                _activeMultiviewChannels.value = newSlots
+
+                // 4. Update layout adapted to new count
+                val activeCount = remainingChannels.size
+                if (activeCount > 0) {
+                    setMultiviewChannelsCount(activeCount)
+                    // Play each compacted channel
+                    remainingChannels.forEachIndexed { index, channel ->
+                        if (index < 4) {
+                            playChannelInTile(channel, index)
+                        }
+                    }
+                    setFocusedTile(0)
+                } else {
+                    _currentLayout.value = MultiviewLayoutType.SOLO
+                    setFocusedTile(0)
+                }
             }
         }
     }
@@ -495,11 +521,30 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadSavedMultiview(item: SavedMultiviewItem) {
         viewModelScope.launch {
-            _activeMultiviewChannels.value = List(4) { index -> item.channels.getOrNull(index) }
-            item.channels.forEachIndexed { index, channel ->
-                playChannelInTile(channel, index)
+            // Stop and release ALL current tiles first to avoid any leakage/zombie sessions
+            for (i in 0 until 4) {
+                stopTileSession(i)
+                playerManager.releaseTile(i)
             }
-            _currentLayout.value = item.layoutType
+            _tileErrors.value = emptyMap()
+
+            val newSlots = emptyTileSlots().toMutableList()
+            item.channels.forEachIndexed { index, channel ->
+                if (index < 4) {
+                    newSlots[index] = channel
+                }
+            }
+            _activeMultiviewChannels.value = newSlots
+
+            val activeCount = item.channels.size.coerceIn(1, 4)
+            setMultiviewChannelsCount(activeCount)
+
+            item.channels.forEachIndexed { index, channel ->
+                if (index < 4) {
+                    playChannelInTile(channel, index)
+                }
+            }
+
             val prefIndex = item.channels.indexOfFirst { it.channelId == item.preferredAudioChannelId }
             val focusIndex = if (prefIndex != -1) prefIndex else 0
             setFocusedTile(focusIndex)

@@ -341,6 +341,8 @@ fun SettingsHubOverlay(
                                 SettingsHubTab.DIAGNOSTICS -> {
                                     DiagnosticsPane(
                                         focusRequester = contentFocusRequester,
+                                        tabloDevice = tabloDevice,
+                                        allChannels = allChannels,
                                         onRequestSidebar = {
                                             tabFocusRequesters[activeTab]?.safeRequest()
                                         }

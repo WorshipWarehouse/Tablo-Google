@@ -302,6 +302,19 @@ class MultiviewPlayerManager(
         }
     }
 
+    fun releaseTile(tileIndex: Int) {
+        try {
+            val player = players.remove(tileIndex)
+            if (player != null) {
+                player.release()
+            }
+            currentUrls.remove(tileIndex)
+            retryCounts.remove(tileIndex)
+        } catch (e: Exception) {
+            Log.e("MultiviewPlayer", "Error releasing tile $tileIndex: ${e.message}")
+        }
+    }
+
     fun togglePlayPause(tileIndex: Int): Boolean {
         val player = players[tileIndex] ?: return false
         return if (player.isPlaying) {

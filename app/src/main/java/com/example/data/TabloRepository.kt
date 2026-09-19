@@ -511,7 +511,7 @@ class TabloRepository(
      * Requests a live watch stream via Gen 4 signed HMAC watch endpoint or legacy endpoint.
      * Returns a WatchSessionResult containing the playlist URL and session token.
      */
-    suspend fun fetchWatchStreamSession(device: TabloDevice, channel: TabloChannel): WatchSessionResult? =
+    suspend fun fetchWatchStreamSession(device: TabloDevice, channel: TabloChannel, tileIndex: Int = -1): WatchSessionResult? =
         withContext(Dispatchers.IO) {
             val channelIdentifier = channel.identifier?.substringAfterLast("/")
                 ?: channel.channelPath.substringAfterLast("/")
@@ -542,7 +542,8 @@ class TabloRepository(
                     val keepalive = watchResp.keepalive
                     if (!rawPlaylist.isNullOrBlank()) {
                         val fullPlaylist = if (rawPlaylist.startsWith("http")) rawPlaylist else "${device.localBaseUrl}$rawPlaylist"
-                        Log.i("TabloRepository", "/watch success for ${channel.channelId} -> status: 200 OK, expires: $expires, keepalive: $keepalive, url: $fullPlaylist, token: $token")
+                        val prefix = token?.take(8) ?: "null"
+                        Log.i("TabloRepository", "[Tile $tileIndex] /watch success for ${channel.channelId} -> status: 200 OK, expires: $expires, keepalive: $keepalive, url: $fullPlaylist, tokenPrefix: $prefix")
                         return@withContext WatchSessionResult(
                             playlistUrl = fullPlaylist,
                             sessionToken = token,
@@ -551,7 +552,7 @@ class TabloRepository(
                         )
                     }
                 } catch (e: Exception) {
-                    Log.w("TabloRepository", "Gen 4 watch attempt failed ($watchUrl): ${e.message}")
+                    Log.w("TabloRepository", "[Tile $tileIndex] Gen 4 watch attempt failed ($watchUrl): ${e.message}")
                 }
             }
 
@@ -606,7 +607,7 @@ class TabloRepository(
         }
     }
 
-    suspend fun deleteSession(device: TabloDevice, sessionToken: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteSession(device: TabloDevice, sessionToken: String, tileIndex: Int = -1) = withContext(Dispatchers.IO) {
         if (!device.isGen4 || sessionToken.isBlank()) return@withContext
         val path = "/player/sessions/$sessionToken"
         val deleteUrl = "${device.localBaseUrl}$path"
@@ -621,9 +622,11 @@ class TabloRepository(
                 date = dateHeader,
                 lighthouse = lh
             )
-            Log.i("TabloRepository", "Session deleted for $sessionToken")
+            val prefix = sessionToken.take(8)
+            Log.i("TabloRepository", "[Tile $tileIndex] Session deleted for prefix: $prefix")
         } catch (e: Exception) {
-            Log.w("TabloRepository", "Session delete failed for $sessionToken: ${e.message}")
+            val prefix = sessionToken.take(8)
+            Log.w("TabloRepository", "[Tile $tileIndex] Session delete failed for prefix $prefix: ${e.message}")
         }
     }
 
