@@ -16,6 +16,18 @@ val TabloTeal = Color(0xFF00D2B4)
 val TabloTealDark = Color(0xFF009688)
 val LiveRed = Color(0xFFEF4444)
 val TvFocusHighlight = Color(0xFF38BDF8)
+val GuideTimeLineRed = Color(0xFFFF334B)
+val GuideTimeLineGlow = Color(0x66FF334B)
+
+// Genre / Category Accents (Tablo4U Style)
+val GenreNews = Color(0xFFEF4444)
+val GenreSports = Color(0xFF10B981)
+val GenreMovies = Color(0xFFA855F7)
+val GenreDrama = Color(0xFF0EA5E9)
+val GenreComedy = Color(0xFFF59E0B)
+val GenreKids = Color(0xFFEC4899)
+val GenreDoc = Color(0xFF14B8A6)
+val GenreDefault = Color(0xFF6366F1)
 
 // Typography & Content
 val TextPrimary = Color(0xFFF8FAFC)

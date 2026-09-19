@@ -1,6 +1,8 @@
 package com.example.ui.guide
 
 import android.view.KeyEvent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,20 +11,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -31,39 +20,24 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Router
-import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -75,35 +49,59 @@ import com.example.model.TabloAiring
 import com.example.model.TabloChannel
 import com.example.model.TabloDevice
 import com.example.ui.theme.*
+import com.example.ui.util.safeRequest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val CHANNEL_COLUMN_WIDTH = 180f
-private const val SLOT_WIDTH = 170f
+private const val CHANNEL_COLUMN_WIDTH = 190f
+private const val SLOT_WIDTH = 180f
 private const val SLOT_MINUTES = GuideTiming.SLOT_MINUTES
 private const val PX_PER_MINUTE = SLOT_WIDTH / SLOT_MINUTES.toFloat()
-private const val ROW_HEIGHT = 68f
+private const val ROW_HEIGHT = 74f
 
-enum class GuideViewFormat {
-    LIST,
-    GRID
+enum class GuideViewFormat(val label: String) {
+    GRID("Timeline Grid"),
+    LIST("Detailed Cards"),
+    COMPACT("Channel List")
 }
 
-enum class ChannelFilterCategory(val label: String) {
-    ALL("All Channels"),
-    OTA("OTA Antenna"),
-    FAST("FAST Streaming"),
-    SPORTS("Sports"),
-    NEWS("News"),
-    MOVIES("Movies")
+enum class ChannelFilterCategory(val label: String, val iconName: String) {
+    ALL("All Channels", "grid"),
+    FAVORITES("Favorites", "star"),
+    OTA("OTA Antenna", "antenna"),
+    FAST("FAST Streaming", "flash"),
+    SPORTS("Sports", "sports"),
+    MOVIES("Movies", "movies"),
+    NEWS("News", "news"),
+    SERIES("Series", "series")
+}
+
+fun getGenreColor(category: String): Color {
+    val cat = category.uppercase(Locale.getDefault())
+    return when {
+        cat.contains("NEWS") || cat.contains("WEATHER") -> GenreNews
+        cat.contains("SPORT") || cat.contains("FOOTBALL") || cat.contains("BASKETBALL") -> GenreSports
+        cat.contains("MOVIE") || cat.contains("CINEMA") || cat.contains("FILM") -> GenreMovies
+        cat.contains("DRAMA") || cat.contains("CRIME") -> GenreDrama
+        cat.contains("COMEDY") || cat.contains("SITCOM") -> GenreComedy
+        cat.contains("KID") || cat.contains("ANIMATION") || cat.contains("FAMILY") -> GenreKids
+        cat.contains("DOC") || cat.contains("NATURE") || cat.contains("SCIENCE") -> GenreDoc
+        else -> GenreDefault
+    }
 }
 
 /**
- * TV Guide Component built with Jetpack Compose.
- * Fetches and displays live channel listings from the Tablo API in a scrollable list format,
- * fully optimized for D-pad/remote control navigation with explicit focus management and highlights.
+ * Tablo4U-Styled TV Guide Screen.
+ * Features:
+ * - Real channel guide grid with channel logos, numbers, callsigns, OTA/FAST tags, HD resolution badges, and favorite stars.
+ * - Guide Time Indicator: Real-time red vertical line with live timestamp flag across the timeline and channel rows.
+ * - Rich Program Inspector Banner showing currently selected/focused program details and instant action buttons.
+ * - Multiple layout modes (Timeline Grid, Detailed Cards, Compact List).
+ * - Instant Search & Realtime Category Filtering.
+ * - DVR recording scheduling tags and Multiview 1-4 routing shortcuts.
  */
 @Composable
 fun GuideScreen(
@@ -121,49 +119,100 @@ fun GuideScreen(
     onNavigateRightPage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val windowStart = GuideTiming.windowStartMs()
-    val now = System.currentTimeMillis()
-    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+    val coroutineScope = rememberCoroutineScope()
+    val windowStart = remember { GuideTiming.windowStartMs() }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
 
-    var selectedFormat by remember { mutableStateOf(GuideViewFormat.LIST) }
+    // Live clock ticker every 15 seconds to update the Guide Time Indicator
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(15_000L)
+            now = System.currentTimeMillis()
+        }
+    }
+
+    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+    val dayFormat = remember { SimpleDateFormat("EEEE, MMM d", Locale.getDefault()) }
+
+    var selectedFormat by remember { mutableStateOf(GuideViewFormat.GRID) }
     var selectedCategory by remember { mutableStateOf(ChannelFilterCategory.ALL) }
-    var programDialog by remember { mutableStateOf<Pair<TabloChannel, TabloAiring>?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var favoriteChannelIds by remember { mutableStateOf(setOf<String>()) }
+    var scheduledRecordingIds by remember { mutableStateOf(setOf<String>()) }
+
+    // Currently focused / hovered channel & airing for the rich Tablo4U Inspector Banner
+    var focusedChannel by remember { mutableStateOf<TabloChannel?>(channels.firstOrNull()) }
+    var focusedAiring by remember { mutableStateOf<TabloAiring?>(null) }
+    var programDetailsDialog by remember { mutableStateOf<Pair<TabloChannel, TabloAiring>?>(null) }
 
     val filterFocusRequesters = remember {
         ChannelFilterCategory.values().associateWith { FocusRequester() }
     }
     val firstItemFocusRequester = remember { FocusRequester() }
+    val gridScrollState = rememberScrollState()
 
-    // Filter channels based on selected category chip
-    val filteredChannels = remember(channels, airings, selectedCategory) {
-        when (selectedCategory) {
-            ChannelFilterCategory.ALL -> channels
-            ChannelFilterCategory.OTA -> channels.filter { !it.isOtt }
-            ChannelFilterCategory.FAST -> channels.filter { it.isOtt }
-            ChannelFilterCategory.SPORTS -> channels.filter { ch ->
-                val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
-                activeAiring?.category.equals("Sports", ignoreCase = true) ||
-                        activeAiring?.title?.contains("Sports", ignoreCase = true) == true
+    // Filter channels based on search query, favorite tags, and category chips
+    val filteredChannels = remember(channels, airings, selectedCategory, searchQuery, favoriteChannelIds) {
+        channels.filter { ch ->
+            val matchesSearch = searchQuery.isBlank() ||
+                    ch.callSign.contains(searchQuery, ignoreCase = true) ||
+                    ch.network.contains(searchQuery, ignoreCase = true) ||
+                    ch.displayChannel.contains(searchQuery, ignoreCase = true)
+
+            if (!matchesSearch) return@filter false
+
+            when (selectedCategory) {
+                ChannelFilterCategory.ALL -> true
+                ChannelFilterCategory.FAVORITES -> favoriteChannelIds.contains(ch.channelId)
+                ChannelFilterCategory.OTA -> !ch.isOtt
+                ChannelFilterCategory.FAST -> ch.isOtt
+                ChannelFilterCategory.SPORTS -> {
+                    val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
+                    activeAiring?.category.equals("Sports", ignoreCase = true) ||
+                            activeAiring?.title?.contains("Sports", ignoreCase = true) == true ||
+                            ch.callSign.contains("SPORT", ignoreCase = true)
+                }
+                ChannelFilterCategory.NEWS -> {
+                    val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
+                    activeAiring?.category.equals("News", ignoreCase = true) ||
+                            activeAiring?.title?.contains("News", ignoreCase = true) == true ||
+                            ch.callSign.contains("NEWS", ignoreCase = true)
+                }
+                ChannelFilterCategory.MOVIES -> {
+                    val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
+                    activeAiring?.category.equals("Movies", ignoreCase = true) ||
+                            activeAiring?.title?.contains("Movie", ignoreCase = true) == true ||
+                            ch.callSign.contains("MOVIE", ignoreCase = true)
+                }
+                ChannelFilterCategory.SERIES -> {
+                    val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
+                    activeAiring?.category.equals("Drama", ignoreCase = true) ||
+                            activeAiring?.category.equals("Comedy", ignoreCase = true)
+                }
             }
-            ChannelFilterCategory.NEWS -> channels.filter { ch ->
-                val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
-                activeAiring?.category.equals("News", ignoreCase = true) ||
-                        activeAiring?.title?.contains("News", ignoreCase = true) == true
-            }
-            ChannelFilterCategory.MOVIES -> channels.filter { ch ->
-                val activeAiring = airings.firstOrNull { it.channelId == ch.channelId && it.isLive }
-                activeAiring?.category.equals("Movies", ignoreCase = true) ||
-                        activeAiring?.title?.contains("Movie", ignoreCase = true) == true
-            }
+        }
+    }
+
+    // Default focused channel update
+    LaunchedEffect(filteredChannels) {
+        if (focusedChannel == null || !filteredChannels.contains(focusedChannel)) {
+            focusedChannel = filteredChannels.firstOrNull()
         }
     }
 
     // Auto-focus content when navigating down from top quick bar
     LaunchedEffect(focusRequester) {
         if (focusRequester != null) {
-            try {
-                firstItemFocusRequester.requestFocus()
-            } catch (_: Exception) {}
+            firstItemFocusRequester.safeRequest()
+        }
+    }
+
+    // Function to scroll the timeline grid to the current time ("Now" position)
+    val scrollToNow: () -> Unit = {
+        coroutineScope.launch {
+            val offsetMinutes = ((now - windowStart) / 60_000L).coerceAtLeast(0L)
+            val targetPx = (offsetMinutes * PX_PER_MINUTE) - 100f
+            gridScrollState.animateScrollTo(targetPx.toInt().coerceAtLeast(0))
         }
     }
 
@@ -171,7 +220,7 @@ fun GuideScreen(
         modifier = modifier
             .fillMaxSize()
             .background(TvBackground)
-            .padding(horizontal = 24.dp, vertical = 14.dp)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
             .onKeyEvent { keyEvent ->
                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                     when (keyEvent.nativeKeyEvent.keyCode) {
@@ -184,96 +233,179 @@ fun GuideScreen(
                 } else false
             }
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Top Header: Tablo Status, Live Clock, Format Toggle, & Refresh listings
-            GuideTopHeader(
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Tablo4U Top Header: Brand info, Search, "Jump to Now" button, Format toggle, and Refresh
+            Tablo4UTopHeader(
                 now = now,
                 timeFormat = timeFormat,
-                channelCount = channels.size,
+                dayFormat = dayFormat,
+                channelCount = filteredChannels.size,
                 tabloDevice = tabloDevice,
                 isLoading = isLoading,
+                searchQuery = searchQuery,
+                onSearchChange = { searchQuery = it },
                 viewFormat = selectedFormat,
                 onToggleFormat = {
-                    selectedFormat = if (selectedFormat == GuideViewFormat.LIST) {
-                        GuideViewFormat.GRID
-                    } else {
-                        GuideViewFormat.LIST
+                    selectedFormat = when (selectedFormat) {
+                        GuideViewFormat.GRID -> GuideViewFormat.LIST
+                        GuideViewFormat.LIST -> GuideViewFormat.COMPACT
+                        GuideViewFormat.COMPACT -> GuideViewFormat.GRID
                     }
                 },
+                onScrollToNow = scrollToNow,
                 onRefresh = onRefresh,
                 onRequestTopNav = onRequestTopNav
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Category Filter Chips
-            CategoryFilterBar(
+            // Category & Genre Filter Bar
+            Tablo4UCategoryFilterBar(
                 selectedCategory = selectedCategory,
                 categories = ChannelFilterCategory.values().toList(),
                 onSelectCategory = { selectedCategory = it },
                 filterFocusRequesters = filterFocusRequesters,
                 onRequestTopNav = onRequestTopNav,
-                onNavigateDownToContent = {
-                    try {
-                        firstItemFocusRequester.requestFocus()
-                    } catch (_: Exception) {}
-                }
+                onNavigateDownToContent = { firstItemFocusRequester.safeRequest() }
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // Tablo4U Live Program Inspector Banner (Details of focused channel/airing)
+            val effectiveAiring = focusedAiring ?: focusedChannel?.let { ch ->
+                val chAirings = TabloGuideSynthesizer.resolveAiringsForChannel(
+                    ch, airings, windowStart, GuideTiming.windowEndMs(now), now
+                )
+                chAirings.firstOrNull { now in it.startTimeMillis until it.endTimeMillis }
+                    ?: chAirings.firstOrNull()
+            }
 
-            // Main Guide Body: Scrollable List Format vs Timeline Matrix
+            Tablo4UProgramInspectorBanner(
+                channel = focusedChannel,
+                airing = effectiveAiring,
+                now = now,
+                timeFormat = timeFormat,
+                isFavorite = focusedChannel?.let { favoriteChannelIds.contains(it.channelId) } ?: false,
+                isRecorded = effectiveAiring?.let { scheduledRecordingIds.contains(it.airingId) } ?: false,
+                onToggleFavorite = { ch ->
+                    favoriteChannelIds = if (favoriteChannelIds.contains(ch.channelId)) {
+                        favoriteChannelIds - ch.channelId
+                    } else {
+                        favoriteChannelIds + ch.channelId
+                    }
+                },
+                onToggleRecord = { airing ->
+                    scheduledRecordingIds = if (scheduledRecordingIds.contains(airing.airingId)) {
+                        scheduledRecordingIds - airing.airingId
+                    } else {
+                        scheduledRecordingIds + airing.airingId
+                    }
+                },
+                onWatchChannel = { focusedChannel?.let { onWatchChannel(it) } },
+                onAssignToTile = { tile -> focusedChannel?.let { onAssignToTile(it, tile) } }
+            )
+
+            // Main Guide Body (Timeline Grid with Guide Time Indicator vs Cards vs Compact)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             ) {
                 if (isLoading && channels.isEmpty()) {
-                    // Loading State from Tablo API
                     GuideLoadingState()
-                } else if (channels.isEmpty()) {
-                    // Empty / Unreachable State
-                    GuideEmptyState(
+                } else if (filteredChannels.isEmpty()) {
+                    Tablo4UEmptyGuideState(
+                        searchQuery = searchQuery,
+                        onClearSearch = { searchQuery = "" },
                         onRetry = onRefresh,
                         onRequestTopNav = onRequestTopNav
                     )
                 } else {
                     when (selectedFormat) {
-                        GuideViewFormat.LIST -> {
-                            // The requested Scrollable List Format
-                            TvLiveChannelScrollableList(
+                        GuideViewFormat.GRID -> {
+                            Tablo4UTimelineGrid(
                                 channels = filteredChannels,
                                 airings = airings,
                                 windowStart = windowStart,
                                 now = now,
                                 timeFormat = timeFormat,
-                                firstItemFocusRequester = firstItemFocusRequester,
+                                scrollState = gridScrollState,
+                                favoriteChannelIds = favoriteChannelIds,
+                                scheduledRecordingIds = scheduledRecordingIds,
+                                onFocusChange = { ch, airing ->
+                                    focusedChannel = ch
+                                    focusedAiring = airing
+                                },
                                 onWatchChannel = onWatchChannel,
                                 onAssignToTile = onAssignToTile,
-                                onShowDetails = { ch, airing -> programDialog = Pair(ch, airing) },
-                                onRequestTopNav = {
-                                    filterFocusRequesters[selectedCategory]?.requestFocus()
-                                        ?: onRequestTopNav()
+                                onShowDetails = { ch, airing ->
+                                    programDetailsDialog = Pair(ch, airing)
                                 },
+                                onToggleFavorite = { ch ->
+                                    favoriteChannelIds = if (favoriteChannelIds.contains(ch.channelId)) {
+                                        favoriteChannelIds - ch.channelId
+                                    } else {
+                                        favoriteChannelIds + ch.channelId
+                                    }
+                                },
+                                onRequestTopNav = onRequestTopNav,
                                 onBack = onBack,
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
-                        GuideViewFormat.GRID -> {
-                            // Timeline Grid Matrix (EPG block view)
-                            TvTimelineGrid(
+                        GuideViewFormat.LIST -> {
+                            Tablo4UCardListView(
                                 channels = filteredChannels,
                                 airings = airings,
                                 windowStart = windowStart,
                                 now = now,
                                 timeFormat = timeFormat,
+                                favoriteChannelIds = favoriteChannelIds,
+                                scheduledRecordingIds = scheduledRecordingIds,
+                                firstItemFocusRequester = firstItemFocusRequester,
+                                onFocusChange = { ch, airing ->
+                                    focusedChannel = ch
+                                    focusedAiring = airing
+                                },
                                 onWatchChannel = onWatchChannel,
                                 onAssignToTile = onAssignToTile,
-                                onShowDetails = { ch, airing -> programDialog = Pair(ch, airing) },
+                                onShowDetails = { ch, airing ->
+                                    programDetailsDialog = Pair(ch, airing)
+                                },
+                                onToggleFavorite = { ch ->
+                                    favoriteChannelIds = if (favoriteChannelIds.contains(ch.channelId)) {
+                                        favoriteChannelIds - ch.channelId
+                                    } else {
+                                        favoriteChannelIds + ch.channelId
+                                    }
+                                },
                                 onRequestTopNav = onRequestTopNav,
                                 onBack = onBack,
-                                onNavigateLeftPage = onNavigateLeftPage,
-                                onNavigateRightPage = onNavigateRightPage,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        GuideViewFormat.COMPACT -> {
+                            Tablo4UCompactListView(
+                                channels = filteredChannels,
+                                airings = airings,
+                                windowStart = windowStart,
+                                now = now,
+                                timeFormat = timeFormat,
+                                favoriteChannelIds = favoriteChannelIds,
+                                onFocusChange = { ch, airing ->
+                                    focusedChannel = ch
+                                    focusedAiring = airing
+                                },
+                                onWatchChannel = onWatchChannel,
+                                onAssignToTile = onAssignToTile,
+                                onToggleFavorite = { ch ->
+                                    favoriteChannelIds = if (favoriteChannelIds.contains(ch.channelId)) {
+                                        favoriteChannelIds - ch.channelId
+                                    } else {
+                                        favoriteChannelIds + ch.channelId
+                                    }
+                                },
+                                onRequestTopNav = onRequestTopNav,
+                                onBack = onBack,
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
@@ -282,39 +414,59 @@ fun GuideScreen(
             }
         }
 
-        // Program Action / Synopsis Dialog
-        if (programDialog != null) {
-            val (channel, airing) = programDialog!!
-            ProgramActionDialog(
+        // Program Details Dialog (Full Tablo4U Modal with DVR options & specs)
+        programDetailsDialog?.let { (channel, airing) ->
+            Tablo4UProgramDetailsDialog(
                 channel = channel,
                 airing = airing,
+                now = now,
                 timeFormat = timeFormat,
-                onWatchFullscreen = {
-                    programDialog = null
+                isFavorite = favoriteChannelIds.contains(channel.channelId),
+                isRecorded = scheduledRecordingIds.contains(airing.airingId),
+                onToggleFavorite = {
+                    favoriteChannelIds = if (favoriteChannelIds.contains(channel.channelId)) {
+                        favoriteChannelIds - channel.channelId
+                    } else {
+                        favoriteChannelIds + channel.channelId
+                    }
+                },
+                onToggleRecord = {
+                    scheduledRecordingIds = if (scheduledRecordingIds.contains(airing.airingId)) {
+                        scheduledRecordingIds - airing.airingId
+                    } else {
+                        scheduledRecordingIds + airing.airingId
+                    }
+                },
+                onWatch = {
                     onWatchChannel(channel)
+                    programDetailsDialog = null
                 },
-                onAssignToTile = { tile ->
-                    programDialog = null
+                onAssignTile = { tile ->
                     onAssignToTile(channel, tile)
+                    programDetailsDialog = null
                 },
-                onDismiss = { programDialog = null }
+                onDismiss = { programDetailsDialog = null }
             )
         }
     }
 }
 
 /**
- * Top Header displaying Tablo device connection status, Live clock beacon, View format switcher, and Tablo API Refresh button.
+ * Tablo4U Top Header: Shows device status, Search bar, Jump to Now button, Layout Switcher, and Refresh.
  */
 @Composable
-private fun GuideTopHeader(
+private fun Tablo4UTopHeader(
     now: Long,
     timeFormat: SimpleDateFormat,
+    dayFormat: SimpleDateFormat,
     channelCount: Int,
     tabloDevice: TabloDevice?,
     isLoading: Boolean,
+    searchQuery: String,
+    onSearchChange: (String) -> Unit,
     viewFormat: GuideViewFormat,
     onToggleFormat: () -> Unit,
+    onScrollToNow: () -> Unit,
     onRefresh: () -> Unit,
     onRequestTopNav: () -> Unit
 ) {
@@ -323,20 +475,31 @@ private fun GuideTopHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
     ) {
-        // Left: Screen Title + Live Status Badge + Tuner & Channel Stats
+        // Left: Guide Title + Live Clock + Device Status
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "TV GUIDE",
+                text = "TABLO GUIDE",
                 color = TextPrimary,
-                fontSize = 22.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp
             )
 
-            // Red LIVE Badge
+            // LIVE Badge with pulsing red beacon
+            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+            val pulseAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.4f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(900, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "pulseAlpha"
+            )
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -344,23 +507,23 @@ private fun GuideTopHeader(
                     .clip(RoundedCornerShape(6.dp))
                     .background(Color(0x33EF4444))
                     .border(BorderStroke(1.dp, LiveRed.copy(alpha = 0.6f)), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .padding(horizontal = 9.dp, vertical = 4.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(LiveRed)
+                        .background(LiveRed.copy(alpha = pulseAlpha))
                 )
                 Text(
                     text = "LIVE • ${timeFormat.format(Date(now))}",
                     color = Color.White,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            // Tablo Tuner & Channel Stats Badge
+            // Tablo Device Stats Badge
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -368,39 +531,52 @@ private fun GuideTopHeader(
                     .clip(RoundedCornerShape(6.dp))
                     .background(TvSurfaceElevated)
                     .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .padding(horizontal = 9.dp, vertical = 4.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Router,
                     contentDescription = null,
                     tint = TabloTeal,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(14.dp)
                 )
                 val deviceName = tabloDevice?.name ?: "Tablo 4th Gen"
                 val tunersText = if (tabloDevice != null) "${tabloDevice.tunerCount} Tuners" else "4 Tuners"
                 Text(
                     text = "$deviceName • $tunersText • $channelCount Channels",
                     color = TextSecondary,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
                 )
             }
         }
 
-        // Right: Format Switcher (List vs Grid) + Refresh Listings Button
+        // Right Controls: Search field, "Jump to Now" button, Layout switcher pill, Refresh button
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Search Input
+            Tablo4USearchField(
+                query = searchQuery,
+                onQueryChange = onSearchChange,
+                onRequestTopNav = onRequestTopNav
+            )
+
+            // Jump to NOW button
+            Tablo4UJumpNowButton(
+                onClick = onScrollToNow,
+                onRequestTopNav = onRequestTopNav
+            )
+
             // View Format Switcher Pill
-            TvFormatPill(
+            Tablo4UFormatButton(
                 viewFormat = viewFormat,
                 onClick = onToggleFormat,
                 onRequestTopNav = onRequestTopNav
             )
 
             // Refresh Listings Button
-            TvRefreshPill(
+            Tablo4URefreshButton(
                 isLoading = isLoading,
                 onClick = onRefresh,
                 onRequestTopNav = onRequestTopNav
@@ -410,25 +586,87 @@ private fun GuideTopHeader(
 }
 
 @Composable
-private fun TvFormatPill(
-    viewFormat: GuideViewFormat,
+private fun Tablo4USearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onRequestTopNav: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .width(160.dp)
+            .height(34.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isFocused) TvSurfaceElevated else TvSurface)
+            .border(
+                BorderStroke(1.dp, if (isFocused) TvFocusHighlight else TvBorder),
+                RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 8.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Search,
+            contentDescription = "Search",
+            tint = if (isFocused) TabloTeal else TextMuted,
+            modifier = Modifier.size(15.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            textStyle = TextStyle(color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium),
+            cursorBrush = SolidColor(TabloTeal),
+            singleLine = true,
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { isFocused = it.isFocused }
+                .onKeyEvent { keyEvent ->
+                    if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                        if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                            onRequestTopNav()
+                            true
+                        } else false
+                    } else false
+                },
+            decorationBox = { innerTextField ->
+                if (query.isEmpty()) {
+                    Text("Filter channels...", color = TextMuted, fontSize = 11.sp)
+                }
+                innerTextField()
+            }
+        )
+        if (query.isNotEmpty()) {
+            IconButton(
+                onClick = { onQueryChange("") },
+                modifier = Modifier.size(18.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Clear",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Tablo4UJumpNowButton(
     onClick: () -> Unit,
     onRequestTopNav: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    val bg = if (isFocused) TabloTeal else TvSurfaceElevated
-    val contentColor = if (isFocused) Color.Black else TextPrimary
-    val border = if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder)
-
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(8.dp),
-        color = bg,
-        border = border,
+        color = if (isFocused) GuideTimeLineRed else TvSurfaceElevated,
+        border = BorderStroke(1.dp, if (isFocused) TvFocusHighlight else TvBorder),
         modifier = Modifier
-            .testTag("btn_guide_format_toggle")
-            .height(36.dp)
+            .height(34.dp)
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .onKeyEvent { keyEvent ->
@@ -442,19 +680,19 @@ private fun TvFormatPill(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(horizontal = 12.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 10.dp)
         ) {
             Icon(
-                imageVector = if (viewFormat == GuideViewFormat.LIST) Icons.Default.ViewList else Icons.Default.GridView,
+                imageVector = Icons.Default.Schedule,
                 contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(16.dp)
+                tint = if (isFocused) Color.White else GuideTimeLineRed,
+                modifier = Modifier.size(14.dp)
             )
             Text(
-                text = if (viewFormat == GuideViewFormat.LIST) "List Format" else "Grid Matrix",
-                color = contentColor,
-                fontSize = 12.sp,
+                text = "NOW",
+                color = if (isFocused) Color.White else TextPrimary,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -462,25 +700,21 @@ private fun TvFormatPill(
 }
 
 @Composable
-private fun TvRefreshPill(
-    isLoading: Boolean,
+private fun Tablo4UFormatButton(
+    viewFormat: GuideViewFormat,
     onClick: () -> Unit,
     onRequestTopNav: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    val bg = if (isFocused) TabloTeal else TvSurfaceElevated
-    val contentColor = if (isFocused) Color.Black else TextPrimary
-    val border = if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder)
-
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(8.dp),
-        color = bg,
-        border = border,
+        color = if (isFocused) TabloTeal else TvSurfaceElevated,
+        border = BorderStroke(1.dp, if (isFocused) TvFocusHighlight else TvBorder),
         modifier = Modifier
-            .testTag("btn_refresh_listings")
-            .height(36.dp)
+            .testTag("btn_guide_format_toggle")
+            .height(34.dp)
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .onKeyEvent { keyEvent ->
@@ -494,27 +728,79 @@ private fun TvRefreshPill(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(horizontal = 12.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.padding(horizontal = 10.dp)
+        ) {
+            Icon(
+                imageVector = when (viewFormat) {
+                    GuideViewFormat.GRID -> Icons.Default.GridView
+                    GuideViewFormat.LIST -> Icons.Default.ViewList
+                    GuideViewFormat.COMPACT -> Icons.Default.LiveTv
+                },
+                contentDescription = null,
+                tint = if (isFocused) Color.Black else TextPrimary,
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                text = viewFormat.label,
+                color = if (isFocused) Color.Black else TextPrimary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun Tablo4URefreshButton(
+    isLoading: Boolean,
+    onClick: () -> Unit,
+    onRequestTopNav: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = if (isFocused) TabloTeal else TvSurfaceElevated,
+        border = BorderStroke(1.dp, if (isFocused) TvFocusHighlight else TvBorder),
+        modifier = Modifier
+            .testTag("btn_refresh_listings")
+            .height(34.dp)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        onRequestTopNav()
+                        true
+                    } else false
+                } else false
+            }
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 10.dp)
         ) {
             if (isLoading) {
                 CircularProgressIndicator(
-                    color = contentColor,
+                    color = if (isFocused) Color.Black else TabloTeal,
                     strokeWidth = 2.dp,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(13.dp)
                 )
             } else {
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = null,
-                    tint = contentColor,
-                    modifier = Modifier.size(16.dp)
+                    tint = if (isFocused) Color.Black else TextPrimary,
+                    modifier = Modifier.size(14.dp)
                 )
             }
             Text(
-                text = if (isLoading) "Updating..." else "Refresh",
-                color = contentColor,
-                fontSize = 12.sp,
+                text = if (isLoading) "Syncing..." else "Refresh",
+                color = if (isFocused) Color.Black else TextPrimary,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -522,10 +808,10 @@ private fun TvRefreshPill(
 }
 
 /**
- * Filter bar with D-pad navigation between category chips.
+ * Tablo4U Category & Genre Filter Bar
  */
 @Composable
-private fun CategoryFilterBar(
+private fun Tablo4UCategoryFilterBar(
     selectedCategory: ChannelFilterCategory,
     categories: List<ChannelFilterCategory>,
     onSelectCategory: (ChannelFilterCategory) -> Unit,
@@ -534,13 +820,13 @@ private fun CategoryFilterBar(
     onNavigateDownToContent: () -> Unit
 ) {
     LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         items(categories) { cat ->
             val isSelected = cat == selectedCategory
             val req = filterFocusRequesters[cat]
-            TvFilterChip(
+            Tablo4UFilterChip(
                 category = cat,
                 isSelected = isSelected,
                 focusRequester = req,
@@ -553,7 +839,7 @@ private fun CategoryFilterBar(
 }
 
 @Composable
-private fun TvFilterChip(
+private fun Tablo4UFilterChip(
     category: ChannelFilterCategory,
     isSelected: Boolean,
     focusRequester: FocusRequester?,
@@ -581,9 +867,9 @@ private fun TvFilterChip(
     }
 
     var mod = Modifier
-        .clip(RoundedCornerShape(16.dp))
+        .clip(RoundedCornerShape(14.dp))
         .background(bg)
-        .border(border, RoundedCornerShape(16.dp))
+        .border(border, RoundedCornerShape(14.dp))
         .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
         .focusable(interactionSource = interactionSource)
         .onKeyEvent { keyEvent ->
@@ -601,721 +887,1457 @@ private fun TvFilterChip(
                 }
             } else false
         }
-        .padding(horizontal = 14.dp, vertical = 7.dp)
+        .padding(horizontal = 12.dp, vertical = 5.dp)
 
     if (focusRequester != null) {
         mod = mod.focusRequester(focusRequester)
     }
 
     Box(modifier = mod) {
-        Text(
-            text = category.label,
-            color = contentColor,
-            fontSize = 12.sp,
-            fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium
-        )
-    }
-}
-
-/**
- * The primary TV Guide component: Scrollable List Format.
- * Vertically scrolling list of live channel cards with Now Playing, Progress Bar,
- * Up Next preview, and direct remote action shortcuts.
- */
-@Composable
-private fun TvLiveChannelScrollableList(
-    channels: List<TabloChannel>,
-    airings: List<TabloAiring>,
-    windowStart: Long,
-    now: Long,
-    timeFormat: SimpleDateFormat,
-    firstItemFocusRequester: FocusRequester,
-    onWatchChannel: (TabloChannel) -> Unit,
-    onAssignToTile: (TabloChannel, Int) -> Unit,
-    onShowDetails: (TabloChannel, TabloAiring) -> Unit,
-    onRequestTopNav: () -> Unit,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-
-    LazyColumn(
-        state = listState,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 24.dp),
-        modifier = modifier
-    ) {
-        itemsIndexed(channels, key = { _, ch -> ch.channelId }) { index, channel ->
-            // Find current live broadcast and upcoming broadcast for this channel
-            val channelAirings = remember(channel, airings, windowStart, now) {
-                val windowEnd = GuideTiming.windowEndMs(now)
-                TabloGuideSynthesizer.resolveAiringsForChannel(channel, airings, windowStart, windowEnd, now)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (category == ChannelFilterCategory.FAVORITES) {
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(12.dp)
+                )
             }
-
-            val currentAiring = channelAirings.firstOrNull { airing ->
-                airing.isLive || (now in airing.startTimeMillis until airing.endTimeMillis)
-            } ?: channelAirings.firstOrNull() ?: TabloAiring(
-                airingId = "live-${channel.channelId}",
-                channelId = channel.channelId,
-                title = "${channel.callSign} Live Programming",
-                episodeTitle = "${channel.network} Broadcast",
-                description = "Live television broadcast airing now on ${channel.callSign} (${channel.network}).",
-                startTimeMillis = now - (15 * 60_000L),
-                durationSeconds = 3600L,
-                category = "Broadcast",
-                isLive = true
-            )
-
-            val upcomingAiring = channelAirings.firstOrNull { airing ->
-                airing.startTimeMillis >= currentAiring.endTimeMillis
-            }
-
-            // Remote Navigation item
-            TvChannelListItemCard(
-                index = index,
-                channel = channel,
-                currentAiring = currentAiring,
-                upcomingAiring = upcomingAiring,
-                now = now,
-                timeFormat = timeFormat,
-                focusRequester = if (index == 0) firstItemFocusRequester else null,
-                onFocused = {
-                    coroutineScope.launch {
-                        listState.animateScrollToItem(index)
-                    }
-                },
-                onWatchChannel = { onWatchChannel(channel) },
-                onAssignToTile = { tile -> onAssignToTile(channel, tile) },
-                onShowDetails = { onShowDetails(channel, currentAiring) },
-                onRequestTopNav = onRequestTopNav,
-                onBack = onBack
+            Text(
+                text = category.label,
+                color = contentColor,
+                fontSize = 11.sp,
+                fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium
             )
         }
     }
 }
 
 /**
- * A single live channel listing card in the scrollable list format.
- * Includes complete channel branding, Now Playing, progress bar, Up Next line, and action buttons.
+ * Tablo4U Rich Program Inspector Banner.
+ * Displays high-resolution details of the focused channel and airing with instant action buttons.
  */
 @Composable
-private fun TvChannelListItemCard(
-    index: Int,
-    channel: TabloChannel,
-    currentAiring: TabloAiring,
-    upcomingAiring: TabloAiring?,
+private fun Tablo4UProgramInspectorBanner(
+    channel: TabloChannel?,
+    airing: TabloAiring?,
     now: Long,
     timeFormat: SimpleDateFormat,
-    focusRequester: FocusRequester?,
-    onFocused: () -> Unit,
+    isFavorite: Boolean,
+    isRecorded: Boolean,
+    onToggleFavorite: (TabloChannel) -> Unit,
+    onToggleRecord: (TabloAiring) -> Unit,
     onWatchChannel: () -> Unit,
-    onAssignToTile: (Int) -> Unit,
-    onShowDetails: () -> Unit,
-    onRequestTopNav: () -> Unit,
-    onBack: () -> Unit
+    onAssignToTile: (Int) -> Unit
 ) {
-    var isCardFocused by remember { mutableStateOf(false) }
+    if (channel == null || airing == null) return
 
-    // Broadcast elapsed progress calculation
-    val elapsedMs = (now - currentAiring.startTimeMillis).coerceAtLeast(0L)
-    val totalMs = (currentAiring.durationSeconds * 1000L).coerceAtLeast(60_000L)
-    val progress = (elapsedMs.toFloat() / totalMs.toFloat()).coerceIn(0.05f, 0.98f)
+    val elapsedMs = (now - airing.startTimeMillis).coerceAtLeast(0L)
+    val totalMs = (airing.durationSeconds * 1000L).coerceAtLeast(60_000L)
+    val progress = (elapsedMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f)
+    val isLiveNow = now in airing.startTimeMillis until airing.endTimeMillis
     val remainingMinutes = ((totalMs - elapsedMs) / 60_000L).coerceAtLeast(1L)
+    val genreColor = getGenreColor(airing.category)
 
-    // Visual styles based on focus
-    val cardBackground = if (isCardFocused) Color(0xFF0F2624) else TvSurface
-    val cardBorder = if (isCardFocused) {
-        BorderStroke(2.5.dp, TvFocusHighlight)
-    } else {
-        BorderStroke(1.dp, TvBorder)
-    }
-
-    var mod = Modifier
-        .fillMaxWidth()
-        .clip(RoundedCornerShape(12.dp))
-        .background(cardBackground)
-        .border(cardBorder, RoundedCornerShape(12.dp))
-        .onFocusChanged {
-            isCardFocused = it.isFocused
-            if (it.isFocused) {
-                onFocused()
-            }
-        }
-        .focusable()
-        .onKeyEvent { keyEvent ->
-            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                when (keyEvent.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        onWatchChannel()
-                        true
-                    }
-                    KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                        onWatchChannel()
-                        true
-                    }
-                    KeyEvent.KEYCODE_DPAD_UP -> {
-                        if (index == 0) {
-                            onRequestTopNav()
-                            true
-                        } else false
-                    }
-                    KeyEvent.KEYCODE_BACK -> {
-                        onBack()
-                        true
-                    }
-                    else -> false
-                }
-            } else false
-        }
-        .padding(16.dp)
-
-    if (focusRequester != null) {
-        mod = mod.focusRequester(focusRequester)
-    }
-
-    Column(modifier = mod) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(TvSurface)
+            .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(10.dp))
+            .padding(12.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: Channel Identity Column
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.width(220.dp)
+            // Left: Channel Branding Pillar
+            Column(
+                modifier = Modifier
+                    .width(130.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(TvSurfaceElevated)
+                    .padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // Channel Number Pill
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isCardFocused) TabloTeal else Color(0x3300D2B4))
-                        .border(
-                            BorderStroke(1.dp, if (isCardFocused) TabloTeal else TabloTeal.copy(alpha = 0.5f)),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .background(if (channel.isOtt) Color(0x3300D2B4) else Color(0x3338BDF8), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = if (channel.isOtt) "FAST" else "OTA",
+                            color = if (channel.isOtt) TabloTeal else TvFocusHighlight,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Text(
                         text = channel.displayChannel,
-                        color = if (isCardFocused) Color.Black else TabloTeal,
-                        fontSize = 16.sp,
+                        color = TextPrimary,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Black
                     )
                 }
 
-                Column {
-                    Text(
-                        text = channel.network.ifBlank { channel.callSign },
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "${channel.callSign} • ${if (channel.resolution.isNotBlank()) channel.resolution else if (channel.isOtt) "720p" else "1080p"}",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = if (channel.isOtt) "FAST Streaming" else "OTA Broadcast",
-                        color = if (channel.isOtt) TabloTealDark else TextMuted,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                Text(
+                    text = channel.callSign,
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    text = channel.network,
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    maxLines = 1
+                )
+
+                if (isFavorite) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Favorite",
+                            tint = Color(0xFFFBBF24),
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Text("FAVORITE", color = Color(0xFFFBBF24), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
-            // Middle: Live Airing Details & Progress
+            // Middle: Airing Metadata & Synopsis
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                // Program Title + Badges
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Pulsating Red LIVE beacon
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0x33EF4444))
-                            .border(BorderStroke(0.5.dp, LiveRed), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(LiveRed)
-                        )
-                        Text(
-                            text = "LIVE",
-                            color = LiveRed,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-
-                    // Program Title
                     Text(
-                        text = currentAiring.title,
+                        text = airing.title,
                         color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
 
                     // Category Pill
-                    if (currentAiring.category.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .background(genreColor.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                            .border(BorderStroke(1.dp, genreColor.copy(alpha = 0.6f)), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = airing.category,
+                            color = genreColor,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Rating Pill
+                    if (airing.rating.isNotEmpty()) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(TvSurfaceElevated)
+                                .background(TvSurfaceElevated, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = airing.rating,
+                                color = TextSecondary,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // LIVE / REC Badges
+                    if (isLiveNow) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0x33EF4444), RoundedCornerShape(4.dp))
+                                .border(BorderStroke(1.dp, LiveRed.copy(alpha = 0.7f)), RoundedCornerShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = currentAiring.category.uppercase(),
-                                color = TextMuted,
+                                text = "ON NOW • ${remainingMinutes}m left",
+                                color = LiveRed,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    if (isRecorded) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0x33EF4444), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = LiveRed, modifier = Modifier.size(8.dp))
+                                Text("REC SCHEDULED", color = LiveRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                // Episode Subtitle & Broadcast Time Range
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val timeRange = "${timeFormat.format(Date(airing.startTimeMillis))} – ${timeFormat.format(Date(airing.endTimeMillis))}"
+                    Text(
+                        text = timeRange,
+                        color = TabloTeal,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    airing.episodeTitle?.let { ep ->
+                        if (ep.isNotBlank()) {
+                            Text(
+                                text = "•  $ep",
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                // Progress Bar (for live airings)
+                if (isLiveNow) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth(0.6f)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = TabloTeal,
+                        trackColor = Color(0x33FFFFFF)
+                    )
+                }
+
+                // Description Synopsis
+                Text(
+                    text = airing.description ?: "Live broadcast airing on ${channel.displayName}.",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Right: Instant Remote Action Buttons (Watch Live, Multiview 1-4, Record, Favorite)
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Big Watch Live Button
+                Button(
+                    onClick = onWatchChannel,
+                    colors = ButtonDefaults.buttonColors(containerColor = TabloTeal, contentColor = Color.Black),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text("Watch Live", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Quick Multiview Tile Launcher Row
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Tile:", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    for (tileIdx in 0..3) {
+                        Surface(
+                            onClick = { onAssignToTile(tileIdx) },
+                            shape = RoundedCornerShape(4.dp),
+                            color = TvSurfaceElevated,
+                            border = BorderStroke(1.dp, TvBorder),
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("${tileIdx + 1}", color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                // Record & Favorite Actions
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        onClick = { onToggleRecord(airing) },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isRecorded) Color(0x33EF4444) else TvSurfaceElevated,
+                        border = BorderStroke(1.dp, if (isRecorded) LiveRed else TvBorder),
+                        modifier = Modifier.height(24.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FiberManualRecord,
+                                contentDescription = null,
+                                tint = if (isRecorded) LiveRed else TextSecondary,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = if (isRecorded) "Recorded" else "Record",
+                                color = if (isRecorded) LiveRed else TextSecondary,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = { onToggleFavorite(channel) },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isFavorite) Color(0x33FBBF24) else TvSurfaceElevated,
+                        border = BorderStroke(1.dp, if (isFavorite) Color(0xFFFBBF24) else TvBorder),
+                        modifier = Modifier.height(24.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = null,
+                                tint = if (isFavorite) Color(0xFFFBBF24) else TextSecondary,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = if (isFavorite) "Favorite" else "Star",
+                                color = if (isFavorite) Color(0xFFFBBF24) else TextSecondary,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Episode / Subtitle
-                if (!currentAiring.episodeTitle.isNullOrBlank()) {
-                    Text(
-                        text = currentAiring.episodeTitle,
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-
-                // Air times & progress bar
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        color = if (isCardFocused) TvFocusHighlight else TabloTeal,
-                        trackColor = TvBorder,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                    )
-
-                    Text(
-                        text = "${timeFormat.format(Date(currentAiring.startTimeMillis))} – ${timeFormat.format(Date(currentAiring.endTimeMillis))} • ${remainingMinutes}m left",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
-                }
-
-                // Up Next Line
-                if (upcomingAiring != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Up Next @ ${timeFormat.format(Date(upcomingAiring.startTimeMillis))}: ${upcomingAiring.title}",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
-
-            // Right: Focused Remote Actions
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Watch Fullscreen Button
-                TvActionButton(
-                    icon = Icons.Default.PlayArrow,
-                    label = "Watch Live",
-                    isPrimary = true,
-                    onClick = onWatchChannel
-                )
-
-                // Quick Multiview Tile Assign
-                for (tileIndex in 0..3) {
-                    TvTileAssignButton(
-                        tileIndex = tileIndex,
-                        onClick = { onAssignToTile(tileIndex) }
-                    )
-                }
-
-                // Info / Synopsis Button
-                TvActionButton(
-                    icon = Icons.Default.Info,
-                    label = "Details",
-                    isPrimary = false,
-                    onClick = onShowDetails
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TvActionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    isPrimary: Boolean,
-    onClick: () -> Unit
-) {
-    var isFocused by remember { mutableStateOf(false) }
-
-    val bg = when {
-        isFocused -> if (isPrimary) Color.White else TabloTeal
-        isPrimary -> TabloTeal
-        else -> TvSurfaceElevated
-    }
-    val contentColor = when {
-        isFocused -> Color.Black
-        isPrimary -> Color.Black
-        else -> TextPrimary
-    }
-    val border = if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder)
-
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(8.dp),
-        color = bg,
-        border = border,
-        modifier = Modifier
-            .height(36.dp)
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.padding(horizontal = 10.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = contentColor,
-                modifier = Modifier.size(15.dp)
-            )
-            Text(
-                text = label,
-                color = contentColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun TvTileAssignButton(
-    tileIndex: Int,
-    onClick: () -> Unit
-) {
-    var isFocused by remember { mutableStateOf(false) }
-
-    val bg = if (isFocused) TabloTeal else TvSurfaceElevated
-    val contentColor = if (isFocused) Color.Black else TextSecondary
-    val border = if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder)
-
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(6.dp),
-        color = bg,
-        border = border,
-        modifier = Modifier
-            .height(36.dp)
-            .width(36.dp)
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = "T${tileIndex + 1}",
-                color = contentColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
         }
     }
 }
 
 /**
- * Timeline Grid Format for 2D Matrix browsing with D-pad navigation.
+ * Tablo4U Signature Timeline Grid.
+ * Features:
+ * - Fixed left channel column.
+ * - Horizontal scrolling 30-min time slots.
+ * - Guide Time Indicator: vertical glowing line spanning down all channel rows with 'NOW' flag.
+ * - Proportional airing blocks with genre bars and live progress.
  */
 @Composable
-private fun TvTimelineGrid(
+private fun Tablo4UTimelineGrid(
     channels: List<TabloChannel>,
     airings: List<TabloAiring>,
     windowStart: Long,
     now: Long,
     timeFormat: SimpleDateFormat,
+    scrollState: androidx.compose.foundation.ScrollState,
+    favoriteChannelIds: Set<String>,
+    scheduledRecordingIds: Set<String>,
+    onFocusChange: (TabloChannel, TabloAiring) -> Unit,
     onWatchChannel: (TabloChannel) -> Unit,
     onAssignToTile: (TabloChannel, Int) -> Unit,
     onShowDetails: (TabloChannel, TabloAiring) -> Unit,
+    onToggleFavorite: (TabloChannel) -> Unit,
     onRequestTopNav: () -> Unit,
     onBack: () -> Unit,
-    onNavigateLeftPage: () -> Unit,
-    onNavigateRightPage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val singleSlotMs = SLOT_MINUTES * 60_000L
     val timelineWidth = (GuideTiming.SLOT_COUNT * SLOT_WIDTH).toInt()
-    val scrollState = rememberScrollState()
     val listState = rememberLazyListState()
 
-    val timeSlots = (0 until GuideTiming.SLOT_COUNT).map { GuideTiming.slotTimeMs(windowStart, it) }
+    val timeSlots = remember(windowStart) {
+        (0 until GuideTiming.SLOT_COUNT).map { GuideTiming.slotTimeMs(windowStart, it) }
+    }
     val contentWidth = (timelineWidth + CHANNEL_COLUMN_WIDTH.toInt()).dp
+    val windowEnd = GuideTiming.windowEndMs(now)
+
+    // Calculate Guide Time Indicator Position (in pixels)
+    val nowOffsetMinutes = ((now - windowStart) / 60_000L).toFloat()
+    val nowLineX = (nowOffsetMinutes * PX_PER_MINUTE).coerceAtLeast(0f)
 
     Column(modifier = modifier) {
-        // Timeline Header Row
+        // Horizontal Scrollable Timeline Container
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .background(Color(0x66101726), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                .fillMaxSize()
                 .horizontalScroll(scrollState)
         ) {
-            Row(modifier = Modifier.width(contentWidth).fillMaxHeight()) {
+            Column(modifier = Modifier.width(contentWidth)) {
+                // Time Slot Header Row with Guide Time Indicator Badge
                 Box(
                     modifier = Modifier
-                        .width(CHANNEL_COLUMN_WIDTH.dp)
-                        .fillMaxHeight()
-                        .padding(start = 14.dp),
-                    contentAlignment = Alignment.CenterStart
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .background(Color(0x800F172A), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                        .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
                 ) {
-                    Text(
-                        text = "CHANNELS",
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        // Left Channel Header
+                        Box(
+                            modifier = Modifier
+                                .width(CHANNEL_COLUMN_WIDTH.dp)
+                                .fillMaxHeight()
+                                .background(TvSurfaceElevated)
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text(
+                                text = "CHANNEL",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
+                        }
+
+                        // Time Interval Cells
+                        timeSlots.forEach { slotMs ->
+                            Box(
+                                modifier = Modifier
+                                    .width(SLOT_WIDTH.dp)
+                                    .fillMaxHeight()
+                                    .border(BorderStroke(0.5.dp, Color(0x332E3A4E))),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(start = 10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(4.dp)
+                                            .clip(CircleShape)
+                                            .background(TabloTeal.copy(alpha = 0.7f))
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = timeFormat.format(Date(slotMs)),
+                                        color = TextPrimary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Guide Time Indicator: Header Flag & Pulsing Dot
+                    if (nowLineX in 0f..(GuideTiming.SLOT_COUNT * SLOT_WIDTH)) {
+                        Box(
+                            modifier = Modifier
+                                .offset(x = (CHANNEL_COLUMN_WIDTH + nowLineX - 38f).dp, y = 2.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(GuideTimeLineRed)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(5.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                )
+                                Text(
+                                    text = "NOW",
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                    }
                 }
 
-                timeSlots.forEach { slotTime ->
-                    Box(
-                        modifier = Modifier
-                            .width(SLOT_WIDTH.dp)
-                            .fillMaxHeight()
-                            .border(BorderStroke(0.5.dp, Color(0x22FFFFFF)))
-                            .padding(horizontal = 10.dp),
-                        contentAlignment = Alignment.CenterStart
+                // Channel Rows in Timeline format with Guide Time Indicator line
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        Text(
-                            text = timeFormat.format(Date(slotTime)),
-                            color = TextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
+                        itemsIndexed(channels, key = { _, ch -> ch.channelId }) { index, channel ->
+                            val channelAirings = remember(channel, airings, windowStart, now) {
+                                TabloGuideSynthesizer.resolveAiringsForChannel(channel, airings, windowStart, windowEnd, now)
+                            }
+
+                            Tablo4UTimelineRow(
+                                index = index,
+                                channel = channel,
+                                channelAirings = channelAirings,
+                                windowStart = windowStart,
+                                singleSlotMs = singleSlotMs,
+                                contentWidth = contentWidth,
+                                isFavorite = favoriteChannelIds.contains(channel.channelId),
+                                scheduledRecordingIds = scheduledRecordingIds,
+                                onFocusChange = { airing -> onFocusChange(channel, airing) },
+                                onTune = { onWatchChannel(channel) },
+                                onAiringClick = { airing -> onShowDetails(channel, airing) },
+                                onToggleFavorite = { onToggleFavorite(channel) },
+                                onRequestTopNav = onRequestTopNav
+                            )
+                        }
+                    }
+
+                    // GUIDE TIME INDICATOR: Vertical glowing laser line extending through all channel rows
+                    if (nowLineX in 0f..(GuideTiming.SLOT_COUNT * SLOT_WIDTH)) {
+                        // Ambient glow line
+                        Box(
+                            modifier = Modifier
+                                .offset(x = (CHANNEL_COLUMN_WIDTH + nowLineX - 2f).dp)
+                                .width(6.dp)
+                                .fillMaxHeight()
+                                .background(GuideTimeLineGlow)
+                        )
+                        // Core crisp laser line
+                        Box(
+                            modifier = Modifier
+                                .offset(x = (CHANNEL_COLUMN_WIDTH + nowLineX).dp)
+                                .width(2.dp)
+                                .fillMaxHeight()
+                                .background(GuideTimeLineRed)
                         )
                     }
                 }
             }
         }
-
-        // Channel Rows in Timeline format
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            itemsIndexed(channels, key = { _, ch -> ch.channelId }) { index, channel ->
-                val windowEnd = GuideTiming.windowEndMs(now)
-                val channelAirings = TabloGuideSynthesizer.resolveAiringsForChannel(channel, airings, windowStart, windowEnd, now)
-                val nowLineX = PX_PER_MINUTE * ((now - windowStart) / 60_000L)
-
-                HorizontalGuideRow(
-                    index = index,
-                    channel = channel,
-                    channelAirings = channelAirings,
-                    windowStart = windowStart,
-                    singleSlotMs = singleSlotMs,
-                    nowLineX = nowLineX,
-                    contentWidth = contentWidth,
-                    scrollState = scrollState,
-                    onTune = { onWatchChannel(channel) },
-                    onAiringClick = { airing -> onShowDetails(channel, airing) },
-                    onRequestTopNav = onRequestTopNav
-                )
-            }
-        }
     }
 }
 
+/**
+ * A single channel row inside the Tablo4U Timeline Grid.
+ */
 @Composable
-private fun HorizontalGuideRow(
+private fun Tablo4UTimelineRow(
     index: Int,
     channel: TabloChannel,
     channelAirings: List<TabloAiring>,
     windowStart: Long,
     singleSlotMs: Long,
-    nowLineX: Float,
     contentWidth: Dp,
-    scrollState: androidx.compose.foundation.ScrollState,
+    isFavorite: Boolean,
+    scheduledRecordingIds: Set<String>,
+    onFocusChange: (TabloAiring) -> Unit,
     onTune: () -> Unit,
     onAiringClick: (TabloAiring) -> Unit,
+    onToggleFavorite: () -> Unit,
     onRequestTopNav: () -> Unit
 ) {
-    var isRowFocused by remember { mutableStateOf(false) }
-
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(ROW_HEIGHT.dp)
-            .background(if (isRowFocused) Color(0x3300D2B4) else TvSurface)
-            .border(BorderStroke(1.dp, if (isRowFocused) TabloTeal.copy(alpha = 0.6f) else TvBorder))
-            .horizontalScroll(scrollState)
+            .border(BorderStroke(0.5.dp, Color(0x332E3A4E)))
     ) {
-        Box(
-            modifier = Modifier.width(contentWidth).fillMaxHeight()
-        ) {
-            // Channel Header Cell
-            ChannelHeaderCell(
+        Row(modifier = Modifier.width(contentWidth).fillMaxHeight()) {
+            // Left Sticky Channel Cell
+            Tablo4UChannelCell(
                 channel = channel,
-                isSelected = isRowFocused,
+                isFavorite = isFavorite,
                 onTune = onTune,
+                onToggleFavorite = onToggleFavorite,
                 modifier = Modifier
                     .width(CHANNEL_COLUMN_WIDTH.dp)
                     .fillMaxHeight()
-                    .onFocusChanged { isRowFocused = it.isFocused }
-                    .focusable()
             )
 
-            // Airings across timeline
-            channelAirings.forEach { airing ->
-                val leftPx = timelineLeftPx(airing, windowStart, singleSlotMs)
-                val widthPx = timelineWidthPx(airing, windowStart, singleSlotMs)
-                val isLive = airing.isLive
+            // Timeline Airing Blocks
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+            ) {
+                channelAirings.forEach { airing ->
+                    val blockStartOffsetMs = (airing.startTimeMillis - windowStart).coerceAtLeast(0L)
+                    val blockStartMinutes = blockStartOffsetMs / 60_000L
+                    val blockLeftPx = blockStartMinutes * PX_PER_MINUTE
 
-                var isAiringFocused by remember { mutableStateOf(false) }
+                    val blockDurationMs = (airing.durationSeconds * 1000L).coerceAtLeast(60_000L)
+                    val blockDurationMinutes = blockDurationMs / 60_000L
+                    val blockWidthPx = (blockDurationMinutes * PX_PER_MINUTE).coerceAtLeast(40f)
 
-                Box(
-                    modifier = Modifier
-                        .offset(x = leftPx.dp)
-                        .width(widthPx.dp)
-                        .fillMaxHeight()
-                        .clickable { onAiringClick(airing) }
-                        .onFocusChanged { isAiringFocused = it.isFocused }
-                        .focusable()
-                        .background(
-                            when {
-                                isAiringFocused -> TabloTeal.copy(alpha = 0.35f)
-                                isLive -> Color(0x331E293B)
-                                else -> Color(0x33131A26)
-                            },
-                            RoundedCornerShape(3.dp)
-                        )
-                        .border(
-                            BorderStroke(
-                                if (isAiringFocused) 2.dp else 0.5.dp,
-                                if (isAiringFocused) TvFocusHighlight else if (isLive) LiveRed.copy(alpha = 0.6f) else Color(0x22FFFFFF)
-                            ),
-                            RoundedCornerShape(3.dp)
-                        ),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (airing.isLive) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .background(LiveRed, CircleShape)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                            }
-                            Text(
-                                text = airing.title,
-                                color = TextPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Text(
-                            text = airing.episodeTitle ?: airing.category,
-                            color = TextSecondary,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    val isRecorded = scheduledRecordingIds.contains(airing.airingId)
+
+                    Tablo4UAiringBlock(
+                        airing = airing,
+                        channel = channel,
+                        isRecorded = isRecorded,
+                        leftPx = blockLeftPx,
+                        widthPx = blockWidthPx,
+                        onFocus = { onFocusChange(airing) },
+                        onClick = { onAiringClick(airing) },
+                        onTune = onTune,
+                        isTopRow = index == 0,
+                        onRequestTopNav = onRequestTopNav
+                    )
                 }
             }
+        }
+    }
+}
 
-            // Current Time Red Vertical Indicator Line
-            if (nowLineX in 0f..(GuideTiming.SLOT_COUNT * SLOT_WIDTH) && channelAirings.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .offset(x = (CHANNEL_COLUMN_WIDTH + nowLineX).dp)
-                        .width(2.dp)
-                        .fillMaxHeight()
-                        .background(LiveRed.copy(alpha = 0.7f))
+/**
+ * Tablo4U Channel Identifier Cell (Left side of grid row)
+ */
+@Composable
+private fun Tablo4UChannelCell(
+    channel: TabloChannel,
+    isFavorite: Boolean,
+    onTune: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .background(if (isFocused) Color(0xFF1E2D44) else TvSurfaceElevated)
+            .border(
+                BorderStroke(
+                    if (isFocused) 2.dp else 1.dp,
+                    if (isFocused) TvFocusHighlight else Color(0x332E3A4E)
+                )
+            )
+            .clickable { onTune() }
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .padding(horizontal = 8.dp)
+    ) {
+        // Favorite Star
+        IconButton(
+            onClick = onToggleFavorite,
+            modifier = Modifier.size(22.dp)
+        ) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                contentDescription = "Favorite",
+                tint = if (isFavorite) Color(0xFFFBBF24) else TextMuted,
+                modifier = Modifier.size(15.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        // Channel Number Badge
+        Box(
+            modifier = Modifier
+                .background(
+                    if (channel.isOtt) Color(0x3300D2B4) else Color(0x3338BDF8),
+                    RoundedCornerShape(4.dp)
+                )
+                .padding(horizontal = 5.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = channel.displayChannel,
+                color = if (channel.isOtt) TabloTeal else TvFocusHighlight,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Callsign & Network
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = channel.callSign,
+                color = TextPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = channel.network,
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (channel.isOtt) "FAST" else "HD",
+                    color = TextMuted,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
     }
 }
 
+/**
+ * Tablo4U Airing Block inside the timeline grid.
+ */
 @Composable
-fun ChannelHeaderCell(
+private fun Tablo4UAiringBlock(
+    airing: TabloAiring,
     channel: TabloChannel,
-    isSelected: Boolean,
+    isRecorded: Boolean,
+    leftPx: Float,
+    widthPx: Float,
+    onFocus: () -> Unit,
+    onClick: () -> Unit,
     onTune: () -> Unit,
-    modifier: Modifier = Modifier
+    isTopRow: Boolean,
+    onRequestTopNav: () -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .background(if (isSelected) Color(0x5500D2B4) else TvSurfaceElevated)
-            .clickable { onTune() }
-            .padding(horizontal = 14.dp)
+    var isFocused by remember { mutableStateOf(false) }
+    val genreColor = getGenreColor(airing.category)
+
+    val bg = if (isFocused) Color(0xFF1E3A5F) else TvSurface
+    val border = if (isFocused) {
+        BorderStroke(2.dp, TvFocusHighlight)
+    } else {
+        BorderStroke(0.5.dp, Color(0x442E3A4E))
+    }
+
+    Box(
+        modifier = Modifier
+            .offset(x = leftPx.dp, y = 3.dp)
+            .width((widthPx - 3f).dp)
+            .height((ROW_HEIGHT - 6f).dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(bg)
+            .border(border, RoundedCornerShape(6.dp))
+            .onFocusChanged {
+                isFocused = it.isFocused
+                if (it.isFocused) {
+                    onFocus()
+                }
+            }
+            .clickable { onClick() }
+            .focusable()
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                            onClick()
+                            true
+                        }
+                        KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                            onTune()
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> {
+                            if (isTopRow) {
+                                onRequestTopNav()
+                                true
+                            } else false
+                        }
+                        else -> false
+                    }
+                } else false
+            }
     ) {
+        // Left Color Bar based on Genre / Category
         Box(
             modifier = Modifier
-                .background(Color(0x44000000), RoundedCornerShape(4.dp))
-                .padding(horizontal = 6.dp, vertical = 3.dp)
+                .width(4.dp)
+                .fillMaxHeight()
+                .background(genreColor)
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
+            // Program Title
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = airing.title,
+                    color = if (isFocused) Color.White else TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+
+                if (isRecorded) {
+                    Icon(
+                        imageVector = Icons.Default.FiberManualRecord,
+                        contentDescription = "REC",
+                        tint = LiveRed,
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
+            }
+
+            // Episode Subtitle / Snippet
+            val subtitleText = airing.episodeTitle ?: airing.category
             Text(
-                text = channel.displayChannel,
-                color = if (isSelected) TabloTeal else TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
+                text = subtitleText,
+                color = if (isFocused) TabloTeal else TextSecondary,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+
+            // Duration / Rating Footer
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                val durMinutes = (airing.durationSeconds / 60L)
+                Text(
+                    text = "${durMinutes}m",
+                    color = TextMuted,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Medium
+                )
+
+                if (airing.rating.isNotEmpty() && widthPx > 100f) {
+                    Text(
+                        text = airing.rating,
+                        color = TextMuted,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
-        Spacer(modifier = Modifier.width(10.dp))
-        Column {
+    }
+}
+
+/**
+ * Tablo4U Detailed Cards View Format
+ */
+@Composable
+private fun Tablo4UCardListView(
+    channels: List<TabloChannel>,
+    airings: List<TabloAiring>,
+    windowStart: Long,
+    now: Long,
+    timeFormat: SimpleDateFormat,
+    favoriteChannelIds: Set<String>,
+    scheduledRecordingIds: Set<String>,
+    firstItemFocusRequester: FocusRequester,
+    onFocusChange: (TabloChannel, TabloAiring) -> Unit,
+    onWatchChannel: (TabloChannel) -> Unit,
+    onAssignToTile: (TabloChannel, Int) -> Unit,
+    onShowDetails: (TabloChannel, TabloAiring) -> Unit,
+    onToggleFavorite: (TabloChannel) -> Unit,
+    onRequestTopNav: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+    val windowEnd = GuideTiming.windowEndMs(now)
+
+    LazyColumn(
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        modifier = modifier
+    ) {
+        itemsIndexed(channels, key = { _, ch -> ch.channelId }) { index, channel ->
+            val channelAirings = remember(channel, airings, windowStart, now) {
+                TabloGuideSynthesizer.resolveAiringsForChannel(channel, airings, windowStart, windowEnd, now)
+            }
+            val currentAiring = channelAirings.firstOrNull { now in it.startTimeMillis until it.endTimeMillis }
+                ?: channelAirings.firstOrNull()
+            val upcomingAiring = channelAirings.firstOrNull {
+                currentAiring != null && it.startTimeMillis >= currentAiring.endTimeMillis
+            }
+
+            if (currentAiring != null) {
+                var isCardFocused by remember { mutableStateOf(false) }
+
+                val elapsedMs = (now - currentAiring.startTimeMillis).coerceAtLeast(0L)
+                val totalMs = (currentAiring.durationSeconds * 1000L).coerceAtLeast(60_000L)
+                val progress = (elapsedMs.toFloat() / totalMs.toFloat()).coerceIn(0.05f, 0.98f)
+                val remainingMinutes = ((totalMs - elapsedMs) / 60_000L).coerceAtLeast(1L)
+                val genreColor = getGenreColor(currentAiring.category)
+                val isFavorite = favoriteChannelIds.contains(channel.channelId)
+
+                var mod = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isCardFocused) Color(0xFF1E2D44) else TvSurface)
+                    .border(
+                        BorderStroke(
+                            if (isCardFocused) 2.dp else 1.dp,
+                            if (isCardFocused) TvFocusHighlight else TvBorder
+                        ),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .onFocusChanged {
+                        isCardFocused = it.isFocused
+                        if (it.isFocused) {
+                            onFocusChange(channel, currentAiring)
+                        }
+                    }
+                    .clickable { onWatchChannel(channel) }
+                    .focusable()
+                    .onKeyEvent { keyEvent ->
+                        if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                            when (keyEvent.nativeKeyEvent.keyCode) {
+                                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                                    onWatchChannel(channel)
+                                    true
+                                }
+                                KeyEvent.KEYCODE_DPAD_UP -> {
+                                    if (index == 0) {
+                                        onRequestTopNav()
+                                        true
+                                    } else false
+                                }
+                                KeyEvent.KEYCODE_BACK -> {
+                                    onBack()
+                                    true
+                                }
+                                else -> false
+                            }
+                        } else false
+                    }
+                    .padding(12.dp)
+
+                if (index == 0) {
+                    mod = mod.focusRequester(firstItemFocusRequester)
+                }
+
+                Column(modifier = mod, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Channel badge
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            IconButton(onClick = { onToggleFavorite(channel) }, modifier = Modifier.size(24.dp)) {
+                                Icon(
+                                    imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = null,
+                                    tint = if (isFavorite) Color(0xFFFBBF24) else TextMuted,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0x3338BDF8), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(channel.displayChannel, color = TvFocusHighlight, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                            }
+                            Text(channel.callSign, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(channel.network, color = TextSecondary, fontSize = 11.sp)
+                        }
+
+                        // Time range
+                        Text(
+                            text = "${timeFormat.format(Date(currentAiring.startTimeMillis))} – ${timeFormat.format(Date(currentAiring.endTimeMillis))}",
+                            color = TabloTeal,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Now Playing Info
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(currentAiring.title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Box(
+                                    modifier = Modifier
+                                        .background(genreColor.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                ) {
+                                    Text(currentAiring.category, color = genreColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            currentAiring.episodeTitle?.let { ep ->
+                                if (ep.isNotBlank()) {
+                                    Text(ep, color = TextSecondary, fontSize = 11.sp)
+                                }
+                            }
+                        }
+
+                        // Quick Watch & Details
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = { onWatchChannel(channel) },
+                                colors = ButtonDefaults.buttonColors(containerColor = TabloTeal, contentColor = Color.Black),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Watch", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            OutlinedButton(
+                                onClick = { onShowDetails(channel, currentAiring) },
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Details", fontSize = 11.sp)
+                            }
+                        }
+                    }
+
+                    // Progress Bar
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = TabloTeal,
+                        trackColor = Color(0x33FFFFFF)
+                    )
+
+                    // Up next snippet
+                    if (upcomingAiring != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("UP NEXT:", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "${timeFormat.format(Date(upcomingAiring.startTimeMillis))}  ${upcomingAiring.title}",
+                                color = TextSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Tablo4U Compact Channel List Format
+ */
+@Composable
+private fun Tablo4UCompactListView(
+    channels: List<TabloChannel>,
+    airings: List<TabloAiring>,
+    windowStart: Long,
+    now: Long,
+    timeFormat: SimpleDateFormat,
+    favoriteChannelIds: Set<String>,
+    onFocusChange: (TabloChannel, TabloAiring) -> Unit,
+    onWatchChannel: (TabloChannel) -> Unit,
+    onAssignToTile: (TabloChannel, Int) -> Unit,
+    onToggleFavorite: (TabloChannel) -> Unit,
+    onRequestTopNav: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+    val windowEnd = GuideTiming.windowEndMs(now)
+
+    LazyColumn(
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        modifier = modifier
+    ) {
+        itemsIndexed(channels, key = { _, ch -> ch.channelId }) { index, channel ->
+            val channelAirings = remember(channel, airings, windowStart, now) {
+                TabloGuideSynthesizer.resolveAiringsForChannel(channel, airings, windowStart, windowEnd, now)
+            }
+            val currentAiring = channelAirings.firstOrNull { now in it.startTimeMillis until it.endTimeMillis }
+                ?: channelAirings.firstOrNull()
+
+            var isFocused by remember { mutableStateOf(false) }
+            val isFavorite = favoriteChannelIds.contains(channel.channelId)
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (isFocused) Color(0xFF1E2D44) else TvSurface)
+                    .border(
+                        BorderStroke(if (isFocused) 2.dp else 1.dp, if (isFocused) TvFocusHighlight else TvBorder),
+                        RoundedCornerShape(6.dp)
+                    )
+                    .onFocusChanged {
+                        isFocused = it.isFocused
+                        if (it.isFocused && currentAiring != null) {
+                            onFocusChange(channel, currentAiring)
+                        }
+                    }
+                    .clickable { onWatchChannel(channel) }
+                    .focusable()
+                    .onKeyEvent { keyEvent ->
+                        if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                            when (keyEvent.nativeKeyEvent.keyCode) {
+                                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                                    onWatchChannel(channel)
+                                    true
+                                }
+                                KeyEvent.KEYCODE_DPAD_UP -> {
+                                    if (index == 0) {
+                                        onRequestTopNav()
+                                        true
+                                    } else false
+                                }
+                                KeyEvent.KEYCODE_BACK -> {
+                                    onBack()
+                                    true
+                                }
+                                else -> false
+                            }
+                        } else false
+                    }
+                    .padding(horizontal = 12.dp)
+            ) {
+                // Channel ID
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(onClick = { onToggleFavorite(channel) }, modifier = Modifier.size(20.dp)) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = null,
+                            tint = if (isFavorite) Color(0xFFFBBF24) else TextMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Text(channel.displayChannel, color = TvFocusHighlight, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                    Text(channel.callSign, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(channel.network, color = TextSecondary, fontSize = 10.sp)
+                }
+
+                // Current Airing Title
+                currentAiring?.let { airing ->
+                    Text(
+                        text = airing.title,
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
+                    )
+                }
+
+                // Quick Play Button
+                Button(
+                    onClick = { onWatchChannel(channel) },
+                    colors = ButtonDefaults.buttonColors(containerColor = TabloTeal, contentColor = Color.Black),
+                    shape = RoundedCornerShape(4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(24.dp)
+                ) {
+                    Text("Tune", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Tablo4U Detailed Program Modal Dialog
+ */
+@Composable
+private fun Tablo4UProgramDetailsDialog(
+    channel: TabloChannel,
+    airing: TabloAiring,
+    now: Long,
+    timeFormat: SimpleDateFormat,
+    isFavorite: Boolean,
+    isRecorded: Boolean,
+    onToggleFavorite: () -> Unit,
+    onToggleRecord: () -> Unit,
+    onWatch: () -> Unit,
+    onAssignTile: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val genreColor = getGenreColor(airing.category)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = TvSurfaceElevated,
+            border = BorderStroke(1.5.dp, TvFocusHighlight),
+            modifier = Modifier
+                .width(520.dp)
+                .wrapContentHeight()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header: Channel tag + Close Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .background(if (channel.isOtt) Color(0x3300D2B4) else Color(0x3338BDF8), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = channel.displayChannel,
+                                color = if (channel.isOtt) TabloTeal else TvFocusHighlight,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "${channel.callSign} (${channel.network})",
+                            color = TextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Show Title & Category
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = airing.title,
+                        color = TextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black
+                    )
+
+                    airing.episodeTitle?.let { ep ->
+                        if (ep.isNotBlank()) {
+                            Text(text = ep, color = TabloTeal, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Tags: Genre, Rating, Air Time
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .background(genreColor.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Text(airing.category, color = genreColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (airing.rating.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0x33FFFFFF), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        ) {
+                            Text(airing.rating, color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    val timeStr = "${timeFormat.format(Date(airing.startTimeMillis))} – ${timeFormat.format(Date(airing.endTimeMillis))}"
+                    Text(timeStr, color = TextSecondary, fontSize = 11.sp)
+                }
+
+                // Synopsis
+                Text(
+                    text = airing.description ?: "Full live broadcast streaming from ${channel.callSign}.",
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+
+                Divider(color = TvBorder, thickness = 1.dp)
+
+                // Action Buttons Row: Watch Live, Record, Multiview Tile 1-4
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onWatch,
+                            colors = ButtonDefaults.buttonColors(containerColor = TabloTeal, contentColor = Color.Black),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f).height(38.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Watch Live", fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = onToggleRecord,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isRecorded) Color(0x33EF4444) else TvSurface,
+                                contentColor = if (isRecorded) LiveRed else TextPrimary
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, if (isRecorded) LiveRed else TvBorder),
+                            modifier = Modifier.weight(1f).height(38.dp)
+                        ) {
+                            Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = if (isRecorded) LiveRed else TextMuted, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isRecorded) "Cancel Rec" else "Record Series", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Multiview Assignment Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Send to Multiview:", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            for (tile in 0..3) {
+                                Button(
+                                    onClick = { onAssignTile(tile) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TvSurface, contentColor = TextPrimary),
+                                    shape = RoundedCornerShape(6.dp),
+                                    border = BorderStroke(1.dp, TvBorder),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Text("Tile ${tile + 1}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Empty / Filtered out Guide State
+ */
+@Composable
+private fun Tablo4UEmptyGuideState(
+    searchQuery: String,
+    onClearSearch: () -> Unit,
+    onRetry: () -> Unit,
+    onRequestTopNav: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(TvSurface)
+                .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(12.dp))
+                .padding(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.LiveTv,
+                contentDescription = null,
+                tint = TabloTeal,
+                modifier = Modifier.size(36.dp)
+            )
             Text(
-                text = channel.callSign,
+                text = if (searchQuery.isNotEmpty()) "No channels match '$searchQuery'" else "No channels in this category",
                 color = TextPrimary,
-                fontSize = 13.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = channel.network,
+                text = "Adjust your category filter or search query to view listings.",
                 color = TextSecondary,
-                fontSize = 11.sp
+                fontSize = 12.sp
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (searchQuery.isNotEmpty()) {
+                    Button(
+                        onClick = onClearSearch,
+                        colors = ButtonDefaults.buttonColors(containerColor = TabloTeal, contentColor = Color.Black)
+                    ) {
+                        Text("Clear Filter")
+                    }
+                }
+                OutlinedButton(onClick = onRetry) {
+                    Text("Refresh Listings")
+                }
+            }
         }
     }
 }
@@ -1336,227 +2358,19 @@ private fun GuideLoadingState() {
             CircularProgressIndicator(
                 color = TabloTeal,
                 strokeWidth = 3.dp,
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(42.dp)
             )
             Text(
-                text = "Fetching live channel listings from Tablo API...",
+                text = "Loading Tablo Channel Guide...",
                 color = TextPrimary,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Loading OTA broadcasts, FAST streams, and current program guide.",
+                text = "Fetching live OTA broadcast schedules and FAST streaming lineups",
                 color = TextSecondary,
-                fontSize = 13.sp
+                fontSize = 12.sp
             )
         }
     }
-}
-
-/**
- * Empty / Retry state when no channels were returned.
- */
-@Composable
-private fun GuideEmptyState(
-    onRetry: () -> Unit,
-    onRequestTopNav: () -> Unit
-) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(TvSurface)
-                .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(16.dp))
-                .padding(32.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.LiveTv,
-                contentDescription = null,
-                tint = TabloTeal,
-                modifier = Modifier.size(48.dp)
-            )
-            Text(
-                text = "No Live Channels Found",
-                color = TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Ensure your Tablo is powered on and connected to the local network,\nand that an antenna channel scan has completed.",
-                color = TextSecondary,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            TvActionButton(
-                icon = Icons.Default.Refresh,
-                label = "Scan / Retry Fetching from Tablo",
-                isPrimary = true,
-                onClick = onRetry
-            )
-        }
-    }
-}
-
-/**
- * Program detail popup with options to watch fullscreen or assign to any Multiview tile (1-4).
- */
-@Composable
-fun ProgramActionDialog(
-    channel: TabloChannel,
-    airing: TabloAiring,
-    timeFormat: SimpleDateFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) },
-    onWatchFullscreen: () -> Unit,
-    onAssignToTile: (Int) -> Unit,
-    onDismiss: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .width(540.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xF20F172A))
-                .border(BorderStroke(2.dp, TvFocusHighlight), RoundedCornerShape(16.dp))
-                .padding(24.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(TabloTeal)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "${channel.displayChannel} ${channel.network}",
-                                color = Color.Black,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Text(
-                            text = airing.title,
-                            color = TextPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Time and category
-                Text(
-                    text = "${timeFormat.format(Date(airing.startTimeMillis))} – ${timeFormat.format(Date(airing.endTimeMillis))} • ${airing.category}",
-                    color = TabloTeal,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val desc = airing.description ?: "Live television broadcast airing on ${channel.callSign}."
-                Text(
-                    text = desc,
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // Action 1: Watch Fullscreen
-                Button(
-                    onClick = onWatchFullscreen,
-                    colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .focusable()
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Watch Fullscreen Live", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text(
-                    text = "OR ASSIGN TO MULTIVIEW TILE (1–4):",
-                    color = TextMuted,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    for (tile in 0..3) {
-                        Button(
-                            onClick = { onAssignToTile(tile) },
-                            colors = ButtonDefaults.buttonColors(containerColor = TvSurfaceElevated),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                                .focusable()
-                        ) {
-                            Icon(
-                                Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = TabloTeal,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Tile ${tile + 1}", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun airingsForChannel(channel: TabloChannel, airings: List<TabloAiring>): List<TabloAiring> =
-    airings.filter { it.channelId == channel.channelId }
-
-private fun timelineLeftPx(airing: TabloAiring, windowStart: Long, singleSlotMs: Long): Float {
-    require(singleSlotMs > 0)
-    val startPx = PX_PER_MINUTE * ((airing.startTimeMillis - windowStart) / 60_000L)
-    val x = startPx.coerceIn(0f, (GuideTiming.SLOT_COUNT * SLOT_WIDTH).toFloat())
-    return x + CHANNEL_COLUMN_WIDTH
-}
-
-private fun timelineWidthPx(airing: TabloAiring, windowStart: Long, singleSlotMs: Long): Float {
-    val windowEnd = windowStart + (GuideTiming.SLOT_COUNT * singleSlotMs)
-    val startClamped = airing.startTimeMillis.coerceIn(windowStart, windowEnd)
-    val endClamped = airing.endTimeMillis.coerceIn(windowStart, windowEnd)
-    val widthPx = PX_PER_MINUTE * ((endClamped - startClamped) / 60_000L)
-    return widthPx.coerceAtLeast(18f)
 }
