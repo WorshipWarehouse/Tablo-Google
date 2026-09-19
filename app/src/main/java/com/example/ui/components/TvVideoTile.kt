@@ -71,7 +71,12 @@ fun TvVideoTile(
     tileError: String? = null
 ) {
     val context = LocalContext.current
-    val playerError = player?.playerError?.message ?: tileError
+    val playerError = tileError ?: player?.playerError?.let { error ->
+        val errorCodeName = error.errorCodeName
+        val causeClass = error.cause?.javaClass?.simpleName ?: ""
+        val causeMsg = error.cause?.message ?: error.message ?: ""
+        "[$errorCodeName] $causeClass: $causeMsg".trim()
+    }
 
     // Border is only used for multiview tiles to indicate audio/focus; solo show has no border
     val borderModifier = if (showBorder) {

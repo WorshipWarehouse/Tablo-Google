@@ -40,7 +40,14 @@ class TabloRepository(
     private val apiService: TabloApiService = createDefaultApiService(),
     private val discoveryManager: TabloDiscoveryManager = TabloDiscoveryManager(apiService)
 ) {
+    var activeLighthouseToken: String? = null
+
+    val signingInterceptor = com.example.data.remote.TabloGen4SigningInterceptor {
+        activeLighthouseToken
+    }
+
     private val rawHttpClient = OkHttpClient.Builder()
+        .addInterceptor(signingInterceptor)
         .addInterceptor(com.example.data.remote.DiagnosticsInterceptor())
         .connectTimeout(6, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -50,8 +57,9 @@ class TabloRepository(
         private const val BATCH_SIZE = 100
         private const val MAX_BATCH_CHUNKS = 40
 
-        fun createDefaultApiService(): TabloApiService {
+        fun createDefaultApiService(signingInterceptor: com.example.data.remote.TabloGen4SigningInterceptor = com.example.data.remote.TabloGen4SigningInterceptor()): TabloApiService {
             val okHttpClient = OkHttpClient.Builder()
+                .addInterceptor(signingInterceptor)
                 .addInterceptor(com.example.data.remote.DiagnosticsInterceptor())
                 .connectTimeout(6, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)
