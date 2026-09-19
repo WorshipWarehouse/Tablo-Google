@@ -76,7 +76,8 @@ fun TvVideoTile(
     showOverlayInfo: Boolean = true,
     showBorder: Boolean = true,
     tileError: String? = null,
-    rawStreamUrl: String? = null
+    rawStreamUrl: String? = null,
+    isTuning: Boolean = false
 ) {
     val context = LocalContext.current
     var showUnredactedUrl by remember { mutableStateOf(false) }
@@ -267,6 +268,33 @@ fun TvVideoTile(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // 4. Centered Loading Spinner during tuning or buffering
+        if (isTuning) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x80000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF06B6D4), // Clean cyan
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tuning...",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }

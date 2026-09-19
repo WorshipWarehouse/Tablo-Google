@@ -41,6 +41,36 @@ class MultiviewPlayerManager(
     // Separate OkHttpClient for ExoPlayer HLS network requests (Port 80)
     // Free of Tablo HMAC / Lighthouse auth headers; includes DiagnosticsInterceptor for logging
     private val exoOkHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val request = chain.request()
+            val url = request.url
+            val query = url.query
+            val builder = request.newBuilder()
+
+            // Strictly set User-Agent and strip any auth / signing headers
+            builder.header("User-Agent", "Tablo-FAST/1.7.0")
+            builder.removeHeader("Authorization")
+            builder.removeHeader("Date")
+            builder.removeHeader("Lighthouse")
+
+            if (query != null) {
+                if (query.endsWith("=") && query.count { it == '=' } == 1) {
+                    val bareKey = query.removeSuffix("=")
+                    val newUrl = url.newBuilder()
+                        .query(null)
+                        .addQueryParameter(bareKey, null) // Passing null value prevents '=' addition
+                        .build()
+                    builder.url(newUrl)
+                } else if (!query.contains("=")) {
+                    val newUrl = url.newBuilder()
+                        .query(null)
+                        .addQueryParameter(query, null)
+                        .build()
+                    builder.url(newUrl)
+                }
+            }
+            chain.proceed(builder.build())
+        }
         .addInterceptor(DiagnosticsInterceptor())
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)

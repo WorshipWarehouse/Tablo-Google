@@ -108,6 +108,9 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
     private val _tileErrors = MutableStateFlow<Map<Int, String>>(emptyMap())
     val tileErrors: StateFlow<Map<Int, String>> = _tileErrors.asStateFlow()
 
+    private val _tuningTiles = MutableStateFlow<Set<Int>>(emptySet())
+    val tuningTiles: StateFlow<Set<Int>> = _tuningTiles.asStateFlow()
+
     private val _isPlaying = MutableStateFlow(true)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
@@ -220,56 +223,64 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
 
         _tileErrors.value = _tileErrors.value - tileIndex
 
+        _tuningTiles.value = _tuningTiles.value + tileIndex
+
         // Cancel previous tuning job on this tile to ensure exactly one /watch per tile per tune
         tuningJobs[tileIndex]?.cancel()
 
         tuningJobs[tileIndex] = viewModelScope.launch {
-            // Cancel current keepalive for old session immediately
-            keepaliveJobs[tileIndex]?.cancel()
-            keepaliveJobs.remove(tileIndex)
+            try {
+                // Cancel current keepalive for old session immediately
+                keepaliveJobs[tileIndex]?.cancel()
+                keepaliveJobs.remove(tileIndex)
 
-            // Extract old token to delete later
-            val oldToken = sessionTokens[tileIndex]
-            sessionTokens.remove(tileIndex)
+                // Extract old token to delete later
+                val oldToken = sessionTokens[tileIndex]
+                sessionTokens.remove(tileIndex)
 
-            val sessionResult = tabloRepository.fetchWatchStreamSession(device, channel)
-            val url = sessionResult?.playlistUrl
-            val token = sessionResult?.sessionToken
-            val keepaliveSec = sessionResult?.keepaliveSeconds ?: 10L
+                val sessionResult = tabloRepository.fetchWatchStreamSession(device, channel)
+                val url = sessionResult?.playlistUrl
+                val token = sessionResult?.sessionToken
+                val keepaliveSec = sessionResult?.keepaliveSeconds ?: 10L
 
-            if (url.isNullOrEmpty()) {
-                _tileErrors.value = _tileErrors.value + (tileIndex to STREAM_ERROR_MESSAGE)
-                // Delete old session token asynchronously even if new tune fails
-                if (!oldToken.isNullOrBlank()) {
-                    launch {
-                        delay(6000L) // safe delay, ensures ExoPlayer is not starting up on it
-                        try {
-                            tabloRepository.deleteSession(device, oldToken)
-                        } catch (e: Exception) {
-                            Log.w("TabloViewModel", "Error deleting old session $oldToken asynchronously: ${e.message}")
+                if (url.isNullOrEmpty()) {
+                    _tileErrors.value = _tileErrors.value + (tileIndex to STREAM_ERROR_MESSAGE)
+                    // Delete old session token asynchronously even if new tune fails
+                    if (!oldToken.isNullOrBlank()) {
+                        launch {
+                            delay(6000L) // safe delay, ensures ExoPlayer is not starting up on it
+                            try {
+                                Log.i("TabloViewModel", "Asynchronous DELETE firing for old session: $oldToken")
+                                tabloRepository.deleteSession(device, oldToken)
+                            } catch (e: Exception) {
+                                Log.w("TabloViewModel", "Error deleting old session $oldToken asynchronously: ${e.message}")
+                            }
+                        }
+                    }
+                } else {
+                    if (!token.isNullOrBlank()) {
+                        sessionTokens[tileIndex] = token
+                    }
+                    playerManager.playChannel(tileIndex, channel, url)
+                    if (!token.isNullOrBlank()) {
+                        startKeepaliveJob(device, tileIndex, token, keepaliveSec)
+                    }
+
+                    // Delete old session token asynchronously
+                    if (!oldToken.isNullOrBlank() && oldToken != token) {
+                        launch {
+                            delay(6000L) // Safe delay to make sure ExoPlayer isn't starting up on the old session
+                            try {
+                                Log.i("TabloViewModel", "Asynchronous DELETE firing for old session (tune transition): $oldToken")
+                                tabloRepository.deleteSession(device, oldToken)
+                            } catch (e: Exception) {
+                                Log.w("TabloViewModel", "Error deleting old session $oldToken asynchronously: ${e.message}")
+                            }
                         }
                     }
                 }
-            } else {
-                if (!token.isNullOrBlank()) {
-                    sessionTokens[tileIndex] = token
-                }
-                playerManager.playChannel(tileIndex, channel, url)
-                if (!token.isNullOrBlank()) {
-                    startKeepaliveJob(device, tileIndex, token, keepaliveSec)
-                }
-
-                // Delete old session token asynchronously
-                if (!oldToken.isNullOrBlank() && oldToken != token) {
-                    launch {
-                        delay(6000L) // Safe delay to make sure ExoPlayer isn't starting up on the old session
-                        try {
-                            tabloRepository.deleteSession(device, oldToken)
-                        } catch (e: Exception) {
-                            Log.w("TabloViewModel", "Error deleting old session $oldToken asynchronously: ${e.message}")
-                        }
-                    }
-                }
+            } finally {
+                _tuningTiles.value = _tuningTiles.value - tileIndex
             }
         }
     }
@@ -298,6 +309,7 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 delay(4000L) // Wait a short period to make sure the player has stopped referencing it
                 try {
+                    Log.i("TabloViewModel", "Asynchronous DELETE firing for explicit stop on tile $tileIndex, session: $token")
                     tabloRepository.deleteSession(device, token)
                 } catch (e: Exception) {
                     Log.w("TabloViewModel", "Error deleting session $token for tile $tileIndex: ${e.message}")

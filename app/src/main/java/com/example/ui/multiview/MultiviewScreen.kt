@@ -55,6 +55,8 @@ import com.example.ui.theme.TvSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+val LocalTuningTiles = androidx.compose.runtime.staticCompositionLocalOf { emptySet<Int>() }
+
 @Composable
 fun MultiviewScreen(
     channels: List<TabloChannel?>,
@@ -64,6 +66,7 @@ fun MultiviewScreen(
     focusedTileIndex: Int,
     allChannels: List<TabloChannel> = emptyList(),
     isPlaying: Boolean = true,
+    tuningTiles: Set<Int> = emptySet(),
     onFocusChanged: (Int) -> Unit,
     onSelectSolo: (Int) -> Unit,
     onBackFromSolo: () -> Unit,
@@ -366,37 +369,38 @@ fun MultiviewScreen(
         baseDpadModifier = baseDpadModifier.focusRequester(focusRequester)
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(TvBackground)
-            .then(baseDpadModifier)
-    ) {
-        when (layoutType) {
-            MultiviewLayoutType.GRID_2X2 -> {
-                // 2x2 Grid (4 channels)
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    ) {
-                        Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(2.dp)) {
-                            RenderTile(
-                                tileIndex = 0,
-                                channels = channels,
-                                airings = airings,
-                                playerManager = playerManager,
-                                isFocused = focusedTileIndex == 0,
-                                onFocus = { onFocusChanged(0) },
-                                onSelect = { onSelectSolo(0) },
-                                onEmptyClick = {
-                                    onFocusChanged(0)
-                                    showControlsOverlay = true
-                                },
-                                showInfo = showTileInfo
-                            )
-                        }
+    androidx.compose.runtime.CompositionLocalProvider(LocalTuningTiles provides tuningTiles) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(TvBackground)
+                .then(baseDpadModifier)
+        ) {
+            when (layoutType) {
+                MultiviewLayoutType.GRID_2X2 -> {
+                    // 2x2 Grid (4 channels)
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(2.dp)) {
+                                RenderTile(
+                                    tileIndex = 0,
+                                    channels = channels,
+                                    airings = airings,
+                                    playerManager = playerManager,
+                                    isFocused = focusedTileIndex == 0,
+                                    onFocus = { onFocusChanged(0) },
+                                    onSelect = { onSelectSolo(0) },
+                                    onEmptyClick = {
+                                        onFocusChanged(0)
+                                        showControlsOverlay = true
+                                    },
+                                    showInfo = showTileInfo
+                                )
+                            }
                         Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(2.dp)) {
                             RenderTile(
                                 tileIndex = 1,
@@ -724,6 +728,7 @@ fun MultiviewScreen(
         )
     }
 }
+}
 
 @Composable
 private fun RenderTile(
@@ -737,8 +742,11 @@ private fun RenderTile(
     onEmptyClick: () -> Unit,
     showInfo: Boolean,
     showBorder: Boolean = true,
-    tileError: String? = null
+    tileError: String? = null,
+    isTuning: Boolean = false
 ) {
+    val tuningTiles = LocalTuningTiles.current
+    val actualTuning = isTuning || tuningTiles.contains(tileIndex)
     val channel = channels.getOrNull(tileIndex)
     if (channel == null) {
         val borderStroke = if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder)
@@ -795,6 +803,7 @@ private fun RenderTile(
         showOverlayInfo = showInfo,
         showBorder = showBorder,
         tileError = tileError,
-        rawStreamUrl = currentRawUrl
+        rawStreamUrl = currentRawUrl,
+        isTuning = actualTuning
     )
 }

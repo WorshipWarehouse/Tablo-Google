@@ -2,9 +2,11 @@ package com.example.ui.guide
 
 import android.view.KeyEvent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -480,6 +482,9 @@ fun GuideScreen(
                                 favoriteChannelIds = favoriteChannelIds,
                                 firstItemFocusRequester = firstContentFocusRequester,
                                 onWatchChannel = onWatchChannel,
+                                onShowDetails = { ch, airing ->
+                                    programDetailsDialog = Pair(ch, airing)
+                                },
                                 onToggleFavorite = onToggleFavorite,
                                 onRequestCategoryNav = {
                                     filterFocusRequesters[selectedCategory]?.safeRequest()
@@ -991,7 +996,8 @@ private fun Tablo4UTimelineGrid(
                                 onAiringFocused = { airing -> onUpdateFocusedEpgTime(airing.startTimeMillis) },
                                 onNavigateUpDown = { channelIdx, isUp -> navigateUpDown(channelIdx, isUp) },
                                 onTune = { onWatchChannel(channel) },
-                                onAiringClick = { airing -> onShowDetails(channel, airing) },
+                                onAiringClick = { airing -> onWatchChannel(channel) },
+                                onAiringLongClick = { airing -> onShowDetails(channel, airing) },
                                 onToggleFavorite = { onToggleFavorite(channel) },
                                 onRequestCategoryNav = onRequestCategoryNav
                             )
@@ -1039,6 +1045,7 @@ private fun Tablo4UTimelineRow(
     onNavigateUpDown: (Int, Boolean) -> Unit,
     onTune: () -> Unit,
     onAiringClick: (TabloAiring) -> Unit,
+    onAiringLongClick: (TabloAiring) -> Unit,
     onToggleFavorite: () -> Unit,
     onRequestCategoryNav: () -> Unit
 ) {
@@ -1090,6 +1097,7 @@ private fun Tablo4UTimelineRow(
                         focusRequester = aFocusRequester,
                         onFocused = { onAiringFocused(airing) },
                         onClick = { onAiringClick(airing) },
+                        onLongClick = { onAiringLongClick(airing) },
                         onTune = onTune,
                         onNavigateUp = { onNavigateUpDown(index, true) },
                         onNavigateDown = { onNavigateUpDown(index, false) },
@@ -1222,6 +1230,7 @@ private fun Tablo4UChannelCell(
 /**
  * Tablo4U Airing Block inside the timeline grid.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Tablo4UAiringBlock(
     airing: TabloAiring,
@@ -1232,6 +1241,7 @@ private fun Tablo4UAiringBlock(
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onTune: () -> Unit,
     onNavigateUp: () -> Unit = {},
     onNavigateDown: () -> Unit = {},
@@ -1261,13 +1271,25 @@ private fun Tablo4UAiringBlock(
                 onFocused()
             }
         }
-        .clickable { onClick() }
+        .combinedClickable(
+            onLongClick = { onLongClick() }
+        ) {
+            onClick()
+        }
         .focusable()
         .onKeyEvent { keyEvent ->
             if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                 when (keyEvent.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        onClick()
+                        if (keyEvent.nativeKeyEvent.isLongPress) {
+                            onLongClick()
+                        } else {
+                            onClick()
+                        }
+                        true
+                    }
+                    KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> {
+                        onLongClick()
                         true
                     }
                     KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
@@ -1372,6 +1394,7 @@ private fun Tablo4UAiringBlock(
 /**
  * Tablo4U Detailed Cards View Format
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Tablo4UCardListView(
     channels: List<TabloChannel>,
@@ -1424,13 +1447,25 @@ private fun Tablo4UCardListView(
                         RoundedCornerShape(10.dp)
                     )
                     .onFocusChanged { isCardFocused = it.isFocused }
-                    .clickable { onWatchChannel(channel) }
+                    .combinedClickable(
+                        onLongClick = { onShowDetails(channel, currentAiring) }
+                    ) {
+                        onWatchChannel(channel)
+                    }
                     .focusable()
                     .onKeyEvent { keyEvent ->
                         if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                             when (keyEvent.nativeKeyEvent.keyCode) {
                                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                                    onWatchChannel(channel)
+                                    if (keyEvent.nativeKeyEvent.isLongPress) {
+                                        onShowDetails(channel, currentAiring)
+                                    } else {
+                                        onWatchChannel(channel)
+                                    }
+                                    true
+                                }
+                                KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> {
+                                    onShowDetails(channel, currentAiring)
                                     true
                                 }
                                 KeyEvent.KEYCODE_DPAD_UP -> {
@@ -1574,6 +1609,7 @@ private fun Tablo4UCardListView(
 /**
  * Tablo4U Compact Channel List Format
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Tablo4UCompactListView(
     channels: List<TabloChannel>,
@@ -1581,6 +1617,7 @@ private fun Tablo4UCompactListView(
     favoriteChannelIds: Set<String>,
     firstItemFocusRequester: FocusRequester,
     onWatchChannel: (TabloChannel) -> Unit,
+    onShowDetails: (TabloChannel, TabloAiring) -> Unit,
     onToggleFavorite: (TabloChannel) -> Unit,
     onRequestCategoryNav: () -> Unit,
     onBack: () -> Unit,
@@ -1611,13 +1648,33 @@ private fun Tablo4UCompactListView(
                     RoundedCornerShape(6.dp)
                 )
                 .onFocusChanged { isFocused = it.isFocused }
-                .clickable { onWatchChannel(channel) }
+                .combinedClickable(
+                    onLongClick = {
+                        if (currentAiring != null) {
+                            onShowDetails(channel, currentAiring)
+                        }
+                    }
+                ) {
+                    onWatchChannel(channel)
+                }
                 .focusable()
                 .onKeyEvent { keyEvent ->
                     if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                         when (keyEvent.nativeKeyEvent.keyCode) {
                             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                                onWatchChannel(channel)
+                                if (keyEvent.nativeKeyEvent.isLongPress) {
+                                    if (currentAiring != null) {
+                                        onShowDetails(channel, currentAiring)
+                                    }
+                                } else {
+                                    onWatchChannel(channel)
+                                }
+                                true
+                            }
+                            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> {
+                                if (currentAiring != null) {
+                                    onShowDetails(channel, currentAiring)
+                                }
                                 true
                             }
                             KeyEvent.KEYCODE_DPAD_UP -> {
@@ -2057,6 +2114,7 @@ private fun Tablo4UFutureScheduleView(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Tablo4UFutureScheduleItemCard(
     channel: TabloChannel,
@@ -2083,8 +2141,12 @@ private fun Tablo4UFutureScheduleItemCard(
             if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder),
             RoundedCornerShape(10.dp)
         )
-        .clickable(interactionSource = interactionSource, indication = null) {
-            onShowDetails()
+        .combinedClickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onLongClick = { onShowDetails() }
+        ) {
+            onWatch()
         }
         .focusable(interactionSource = interactionSource)
         .onKeyEvent { keyEvent ->
@@ -2101,6 +2163,14 @@ private fun Tablo4UFutureScheduleItemCard(
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                        if (keyEvent.nativeKeyEvent.isLongPress) {
+                            onShowDetails()
+                        } else {
+                            onWatch()
+                        }
+                        true
+                    }
+                    KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> {
                         onShowDetails()
                         true
                     }

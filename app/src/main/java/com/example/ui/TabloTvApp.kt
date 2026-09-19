@@ -50,6 +50,7 @@ fun TabloTvApp(
     val isLoadingGuide by viewModel.isLoadingGuide.collectAsState()
     val focusedEpgTimeMs by viewModel.focusedEpgTimeMs.collectAsState()
     val favoriteChannelIds by viewModel.favoriteChannelIds.collectAsState()
+    val tuningTiles by viewModel.tuningTiles.collectAsState()
 
     var showSettingsHub by remember { mutableStateOf(false) }
     var showQuickSaveDialog by remember { mutableStateOf(false) }
@@ -94,6 +95,7 @@ fun TabloTvApp(
                             focusedTileIndex = focusedTileIndex,
                             allChannels = channels,
                             isPlaying = isPlaying,
+                            tuningTiles = tuningTiles,
                             onFocusChanged = { viewModel.setFocusedTile(it) },
                             onSelectSolo = { viewModel.enterSolo(it) },
                             onBackFromSolo = { viewModel.exitSolo() },
