@@ -213,6 +213,7 @@ fun TabloTvApp(
                                         airings = airings,
                                         onSelectChannel = { viewModel.tuneChannelFullscreen(it) },
                                         onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
+                                        focusRequester = contentFocusRequester,
                                         onRequestTopNav = {
                                             navFocusRequesters[TvScreenSection.SEARCH]?.safeRequest()
                                         },
@@ -238,6 +239,7 @@ fun TabloTvApp(
                                         onRenameMultiview = { id, name -> viewModel.renameSavedMultiview(id, name) },
                                         onDeleteMultiview = { id -> viewModel.deleteSavedMultiview(id) },
                                         onBack = { viewModel.setSection(TvScreenSection.MULTIVIEW) },
+                                        focusRequester = contentFocusRequester,
                                         onRequestTopNav = {
                                             navFocusRequesters[TvScreenSection.SAVED]?.safeRequest()
                                         },
@@ -267,6 +269,7 @@ fun TabloTvApp(
                                         onManualConnect = { ip, port -> viewModel.connectDirectIp(ip, port) },
                                         onLoginAccount = { email, pass -> viewModel.loginTabloAccount(email, pass) },
                                         onDisconnect = { viewModel.disconnect() },
+                                        focusRequester = contentFocusRequester,
                                         onBack = {
                                             if (tabloDevice != null) {
                                                 viewModel.setSection(TvScreenSection.MULTIVIEW)

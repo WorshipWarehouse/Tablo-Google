@@ -95,9 +95,8 @@ fun TvQuickBar(
     onNavigateDown: (TvScreenSection) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    LaunchedEffect(visible) {
+    LaunchedEffect(visible, currentSection) {
         if (visible) {
-            delay(60)
             navFocusRequesters[currentSection]?.safeRequest()
         }
     }

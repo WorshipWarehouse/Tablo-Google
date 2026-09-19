@@ -46,6 +46,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,9 +56,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalFocusManager
+import com.example.ui.util.safeRequest
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -101,9 +105,17 @@ fun TabloConnectionScreen(
     onRequestTopNav: () -> Unit = {},
     onNavigateLeftPage: () -> Unit = {},
     onNavigateRightPage: () -> Unit = {},
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     var selectedMode by remember { mutableStateOf(ConnectMode.AUTO_DISCOVER) }
+    val tabFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+
+    LaunchedEffect(focusRequester) {
+        if (focusRequester != null) {
+            tabFocusRequester.safeRequest()
+        }
+    }
 
     // Account login inputs
     var emailInput by remember { mutableStateOf("") }
@@ -182,18 +194,32 @@ fun TabloConnectionScreen(
                             else -> BorderStroke(1.dp, TvBorder)
                         }
 
+                        var tabMod = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(bg)
+                            .border(border, RoundedCornerShape(8.dp))
+                            .clickable(
+                                interactionSource = interactionSource,
+                                indication = null,
+                                onClick = { selectedMode = mode }
+                            )
+                            .focusable(interactionSource = interactionSource)
+                            .onKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                    if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                                        onRequestTopNav()
+                                        true
+                                    } else false
+                                } else false
+                            }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+
+                        if (mode == ConnectMode.AUTO_DISCOVER) {
+                            tabMod = tabMod.focusRequester(tabFocusRequester)
+                        }
+
                         Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(bg)
-                                .border(border, RoundedCornerShape(8.dp))
-                                .clickable(
-                                    interactionSource = interactionSource,
-                                    indication = null,
-                                    onClick = { selectedMode = mode }
-                                )
-                                .focusable(interactionSource = interactionSource)
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = tabMod,
                             contentAlignment = Alignment.Center
                         ) {
                             Text(

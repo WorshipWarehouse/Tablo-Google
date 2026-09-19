@@ -40,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,9 +48,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalFocusManager
+import com.example.ui.util.safeRequest
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -82,11 +86,19 @@ fun SavedMultiviewsScreen(
     onRequestTopNav: () -> Unit = {},
     onNavigateLeftPage: () -> Unit = {},
     onNavigateRightPage: () -> Unit = {},
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
     var itemToRename by remember { mutableStateOf<SavedMultiviewItem?>(null) }
     var itemToDelete by remember { mutableStateOf<SavedMultiviewItem?>(null) }
+    val actionFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+
+    LaunchedEffect(focusRequester) {
+        if (focusRequester != null) {
+            actionFocusRequester.safeRequest()
+        }
+    }
 
     Box(
         modifier = modifier
@@ -135,7 +147,17 @@ fun SavedMultiviewsScreen(
 
                 Button(
                     onClick = { showSaveDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = TabloTeal)
+                    colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+                    modifier = Modifier
+                        .focusRequester(actionFocusRequester)
+                        .onKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                                    onRequestTopNav()
+                                    true
+                                } else false
+                            } else false
+                        }
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black)
                     Spacer(modifier = Modifier.width(6.dp))

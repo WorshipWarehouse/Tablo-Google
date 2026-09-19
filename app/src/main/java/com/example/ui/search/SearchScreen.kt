@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,9 +43,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalFocusManager
+import com.example.ui.util.safeRequest
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,11 +76,19 @@ fun SearchScreen(
     onRequestTopNav: () -> Unit = {},
     onNavigateLeftPage: () -> Unit = {},
     onNavigateRightPage: () -> Unit = {},
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("ALL") }
     val focusManager = LocalFocusManager.current
+    val searchInputFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(focusRequester) {
+        if (focusRequester != null) {
+            searchInputFocusRequester.safeRequest()
+        }
+    }
 
     val categories = listOf("ALL", "SPORTS", "MOVIES", "SERIES")
 
@@ -199,6 +211,15 @@ fun SearchScreen(
                     modifier = Modifier
                         .weight(1f)
                         .height(54.dp)
+                        .focusRequester(searchInputFocusRequester)
+                        .onKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                                    onRequestTopNav()
+                                    true
+                                } else false
+                            } else false
+                        }
                 )
 
                 // Category Pills aligned on same row
