@@ -58,6 +58,8 @@ object TabloGen4Auth {
      */
     fun makeWatchBody(clientId: String): String {
         val safeClientId = clientId.ifBlank { "00000000-0000-0000-0000-000000000000" }
-        return """{"bandwidth": null, "platform": "android", "device_id": "$safeClientId", "extra": {}}"""
+        // Keep this byte-for-byte shape aligned with the Gen 4 client reference: the
+        // body is part of the HMAC input, so changing it after signing causes a 401.
+        return """{"bandwidth": null, "extra": {"limitedAdTracking": 1, "deviceOSVersion": "16.6", "lang": "en_US", "height": 1080, "deviceId": "00000000-0000-0000-0000-000000000000", "width": 1920, "deviceModel": "iPhone10,1", "deviceMake": "Apple", "deviceOS": "iOS"}, "device_id": "$safeClientId", "platform": "ios"}"""
     }
 }

@@ -424,38 +424,38 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
     fun removeChannelFromTile(tileIndex: Int) {
         if (tileIndex in 0..3) {
             viewModelScope.launch {
-                // 1. Get the list of remaining non-null channels in order, excluding the removed tileIndex
+                // Keep existing players and Gen 4 sessions paired with their channel
+                // while compacting. Re-tuning every tile here invalidated sessions and
+                // could leave the audio focus attached to the wrong channel.
                 val currentSlots = _activeMultiviewChannels.value
-                val remainingChannels = currentSlots.mapIndexedNotNull { index, channel ->
-                    if (index != tileIndex && channel != null) channel else null
-                }
+                val remaining = currentSlots.mapIndexedNotNull { index, channel ->
+                    channel?.let { index to it }
+                }.filterNot { it.first == tileIndex }
 
-                // 2. Clear / stop ALL 4 tiles completely to start clean
-                for (i in 0 until 4) {
-                    stopTileSession(i)
-                    playerManager.releaseTile(i)
-                    _tileErrors.value = _tileErrors.value - i
-                }
+                stopTileSession(tileIndex)
+                playerManager.releaseTile(tileIndex)
+                _tileErrors.value = _tileErrors.value - tileIndex
 
-                // 3. Compact remaining channels into new slots
                 val newSlots = emptyTileSlots().toMutableList()
-                remainingChannels.forEachIndexed { index, channel ->
-                    if (index < 4) {
-                        newSlots[index] = channel
+                remaining.forEachIndexed { newIndex, (oldIndex, channel) ->
+                    if (newIndex < 4) {
+                        if (oldIndex != newIndex) {
+                            playerManager.moveTile(oldIndex, newIndex)
+                            sessionTokens.remove(oldIndex)?.let { sessionTokens[newIndex] = it }
+                            keepaliveJobs.remove(oldIndex)?.let { keepaliveJobs[newIndex] = it }
+                            tuningJobs.remove(oldIndex)?.let { tuningJobs[newIndex] = it }
+                            _tileErrors.value[oldIndex]?.let { error ->
+                                _tileErrors.value = (_tileErrors.value - oldIndex) + (newIndex to error)
+                            }
+                        }
+                        newSlots[newIndex] = channel
                     }
                 }
                 _activeMultiviewChannels.value = newSlots
 
-                // 4. Update layout adapted to new count
-                val activeCount = remainingChannels.size
+                val activeCount = remaining.size
                 if (activeCount > 0) {
                     setMultiviewChannelsCount(activeCount)
-                    // Play each compacted channel
-                    remainingChannels.forEachIndexed { index, channel ->
-                        if (index < 4) {
-                            playChannelInTile(channel, index)
-                        }
-                    }
                     setFocusedTile(0)
                 } else {
                     _currentLayout.value = MultiviewLayoutType.SOLO

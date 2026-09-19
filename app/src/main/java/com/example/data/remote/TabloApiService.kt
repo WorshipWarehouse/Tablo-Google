@@ -106,7 +106,7 @@ interface TabloApiService {
         @Url url: String,
         @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/2.0.0 (Mobile; iPhone; iOS 16.6)",
         @retrofit2.http.Header("Authorization") authorization: String,
-        @retrofit2.http.Header("Lighthouse") lighthouse: String,
+        @retrofit2.http.Header("Lighthouse") lighthouse: String? = null,
         @retrofit2.http.Header("Accept") accept: String = "*/*"
     ): List<TabloGen4CloudChannel>
 
@@ -133,7 +133,7 @@ interface TabloApiService {
         @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/1.7.0",
         @retrofit2.http.Header("Authorization") authorization: String,
         @retrofit2.http.Header("Date") date: String,
-        @retrofit2.http.Header("Lighthouse") lighthouse: String,
+        @retrofit2.http.Header("Lighthouse") lighthouse: String? = null,
         @Body body: RequestBody
     ): TabloGen4WatchResponse
 
@@ -153,6 +153,6 @@ interface TabloApiService {
         @retrofit2.http.Header("User-Agent") userAgent: String = "Tablo-FAST/1.7.0",
         @retrofit2.http.Header("Authorization") authorization: String,
         @retrofit2.http.Header("Date") date: String,
-        @retrofit2.http.Header("Lighthouse") lighthouse: String
+        @retrofit2.http.Header("Lighthouse") lighthouse: String? = null
     ): okhttp3.ResponseBody
 }
