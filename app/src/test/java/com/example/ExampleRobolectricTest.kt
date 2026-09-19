@@ -20,7 +20,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+// Robolectric 4.16 supports Android 15 (API 35); compileSdk may remain newer.
+@Config(sdk = [35])
 class ExampleRobolectricTest {
 
   @Test
