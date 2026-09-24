@@ -89,7 +89,9 @@ app/src/main/java/com/example/
 
 ### Quick Testing & Installation (Pre-Built APK)
 
-> **Note**: `outputs/tablo-multiview-debug.apk` is the **latest pre-built APK** generated directly by AI Studio for every iteration. **You do NOT need to build the application yourself or configure Gradle/Android SDK for normal testing.**
+> **Note**: `outputs/tablo-multiview-debug.apk` is the latest signed APK built
+> from `main`. GitHub Actions replaces it after every successful `main` build.
+> You do not need Android Studio or Gradle to install it.
 
 Simply pull the latest repository and install the pre-built APK directly onto your Android TV or Amazon Fire TV device:
 
@@ -183,6 +185,22 @@ If the app is already installed and Android rejects the update because the
 signing key changed, uninstall the old debug build first with
 `adb uninstall com.aistudio.tablotv.qrxmtp`, then install again. This removes
 the app's local presets and connection information.
+
+### Automated APK Publishing
+
+Every successful push to `main` runs the Android test build and then replaces
+`outputs/tablo-multiview-debug.apk` with a freshly signed release APK. This
+makes the repository output directly installable with the ADB commands above.
+
+Before the first publish, add these **repository Actions secrets** in GitHub:
+
+- `ANDROID_KEYSTORE_BASE64` — Base64-encoded JKS signing keystore
+- `ANDROID_KEYSTORE_PASSWORD` — Keystore password
+- `ANDROID_KEY_ALIAS` — Alias of the signing key
+- `ANDROID_KEY_PASSWORD` — Key password
+
+Keep these values private. The same key must be retained for every build so
+users can install upgrades with `adb install -r` without uninstalling the app.
 
 #### Deploying & Sideloading via ADB (Android TV / Fire TV)
 
