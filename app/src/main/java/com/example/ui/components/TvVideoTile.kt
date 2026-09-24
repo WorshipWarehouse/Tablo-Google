@@ -81,6 +81,7 @@ fun TvVideoTile(
 ) {
     val context = LocalContext.current
     var showUnredactedUrl by remember { mutableStateOf(false) }
+    var hasDpadFocus by remember { mutableStateOf(false) }
 
     LaunchedEffect(showUnredactedUrl) {
         if (showUnredactedUrl) {
@@ -97,8 +98,8 @@ fun TvVideoTile(
 
     // Border is only used for multiview tiles to indicate audio/focus; solo show has no border
     val borderModifier = if (showBorder) {
-        val borderStroke = if (isAudioFocused) {
-            BorderStroke(2.dp, ActiveAudioBorderColor)
+        val borderStroke = if (hasDpadFocus || isAudioFocused) {
+            BorderStroke(if (hasDpadFocus) 4.dp else 2.dp, ActiveAudioBorderColor)
         } else {
             BorderStroke(1.dp, Color(0x1AFFFFFF))
         }
@@ -112,6 +113,11 @@ fun TvVideoTile(
     val baseModifier = modifier
         .fillMaxSize()
         .then(borderModifier)
+        .onFocusChanged {
+            hasDpadFocus = it.isFocused
+            if (it.isFocused) onFocused()
+        }
+        .focusable()
         .clickable {
             onFocused()
             onSelect()
