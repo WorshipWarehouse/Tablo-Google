@@ -73,11 +73,12 @@ class MultiviewPlayerManager(
         // Optimized load control for low latency live streams on Fire TV
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                2000,   // minBufferMs
-                5000,   // maxBufferMs
-                1000,   // bufferForPlaybackMs
-                1500    // bufferForPlaybackAfterRebufferMs
+                750,    // minBufferMs: four players must not each retain seconds of video
+                2000,   // maxBufferMs
+                500,    // bufferForPlaybackMs
+                750     // bufferForPlaybackAfterRebufferMs
             )
+            .setTargetBufferBytes(3 * 1024 * 1024)
             .build()
 
         val okHttpDataSourceFactory = OkHttpDataSource.Factory(exoOkHttpClient)
@@ -89,7 +90,9 @@ class MultiviewPlayerManager(
 
         val renderersFactory = DefaultRenderersFactory(context)
             .setMediaCodecSelector(MediaCodecSelector.DEFAULT)
-            .setEnableDecoderFallback(true)
+            // A software video decoder can keep playing briefly, then exhaust the
+            // first-generation Fire TV Stick 4K when multiple tiles are active.
+            .setEnableDecoderFallback(false)
 
         val player = ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
@@ -102,6 +105,8 @@ class MultiviewPlayerManager(
                 trackSelectionParameters = trackSelectionParameters
                     .buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .setMaxVideoSize(1280, 720)
+                    .setMaxVideoBitrate(3_000_000)
                     .build()
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
