@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,13 +23,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,8 +57,6 @@ import androidx.media3.ui.PlayerView
 import com.example.model.TabloAiring
 import com.example.model.TabloChannel
 import com.example.ui.theme.ActiveAudioBorderColor
-import com.example.ui.theme.LiveRed
-import com.example.ui.theme.TabloTeal
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.TvBackground
@@ -68,27 +73,49 @@ fun TvVideoTile(
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
-    showOverlayInfo: Boolean = true
+    showOverlayInfo: Boolean = true,
+    showBorder: Boolean = true,
+    tileError: String? = null,
+    rawStreamUrl: String? = null,
+    isTuning: Boolean = false
 ) {
     val context = LocalContext.current
+    var showUnredactedUrl by remember { mutableStateOf(false) }
 
-    // Deterministic subtle border when focused; no dark/mute overlay on inactive feeds
-    val borderStroke = if (isAudioFocused) {
-        BorderStroke(2.5.dp, ActiveAudioBorderColor.copy(alpha = 0.92f))
+    LaunchedEffect(showUnredactedUrl) {
+        if (showUnredactedUrl) {
+            kotlinx.coroutines.delay(60000L)
+            showUnredactedUrl = false
+        }
+    }
+    val playerError = tileError ?: player?.playerError?.let { error ->
+        val errorCodeName = error.errorCodeName
+        val causeClass = error.cause?.javaClass?.simpleName ?: ""
+        val causeMsg = error.cause?.message ?: error.message ?: ""
+        "[$errorCodeName] $causeClass: $causeMsg".trim()
+    }
+
+    // Border is only used for multiview tiles to indicate audio/focus; solo show has no border
+    val borderModifier = if (showBorder) {
+        val borderStroke = if (isAudioFocused) {
+            BorderStroke(2.dp, ActiveAudioBorderColor)
+        } else {
+            BorderStroke(1.dp, Color(0x1AFFFFFF))
+        }
+        Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .border(borderStroke, RoundedCornerShape(4.dp))
     } else {
-        BorderStroke(1.dp, Color(0x22FFFFFF))
+        Modifier
     }
 
     val baseModifier = modifier
         .fillMaxSize()
-        .clip(RoundedCornerShape(4.dp))
-        .border(borderStroke, RoundedCornerShape(4.dp))
-        .onFocusChanged { focusState ->
-            if (focusState.isFocused) {
-                onFocused()
-            }
+        .then(borderModifier)
+        .clickable {
+            onFocused()
+            onSelect()
         }
-        .focusable()
 
     val combinedModifier = if (focusRequester != null) {
         baseModifier.focusRequester(focusRequester)
@@ -147,14 +174,18 @@ fun TvVideoTile(
                     Box(
                         modifier = Modifier
                             .background(
-                                color = if (isAudioFocused) TabloTeal.copy(alpha = 0.85f) else Color(0x661E293B),
+                                color = if (isAudioFocused) Color(0xD91E293B) else Color(0x661E293B),
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                            .border(
+                                border = if (isAudioFocused) BorderStroke(1.dp, ActiveAudioBorderColor.copy(alpha = 0.6f)) else BorderStroke(0.5.dp, Color(0x33FFFFFF)),
                                 shape = RoundedCornerShape(4.dp)
                             )
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Text(
                             text = "${channel.displayChannel} ${channel.network}",
-                            color = if (isAudioFocused) Color.Black else TextPrimary,
+                            color = TextPrimary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -173,29 +204,97 @@ fun TvVideoTile(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+        }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+        // 3. On-screen Playback Error Card (visible if stream fails instead of failing silently)
+        if (!playerError.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xEB0F172A))
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Playback Error",
+                        color = Color(0xFFEF4444),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = playerError,
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
 
-                    // Subtle LIVE Indicator
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .background(Color(0x33000000), RoundedCornerShape(3.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .background(LiveRed, CircleShape)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "LIVE",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                    if (!rawStreamUrl.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = { showUnredactedUrl = !showUnredactedUrl },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (showUnredactedUrl) Color(0xFF0284C7) else Color(0xFF334155)
+                            ),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (showUnredactedUrl) "Hide Stream URL" else "Show Stream URL",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (showUnredactedUrl) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(
+                                    text = rawStreamUrl,
+                                    color = Color(0xFF38BDF8),
+                                    fontSize = 10.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .background(Color(0xFF020617), RoundedCornerShape(4.dp))
+                                        .padding(8.dp)
+                                )
+                            }
+                        }
                     }
+                }
+            }
+        }
+
+        // 4. Centered Loading Spinner during tuning or buffering
+        if (isTuning) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x80000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF06B6D4), // Clean cyan
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tuning...",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }

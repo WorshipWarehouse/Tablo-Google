@@ -25,9 +25,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SettingsEthernet
@@ -36,24 +42,34 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalFocusManager
+import com.example.ui.util.safeRequest
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.example.model.TabloDevice
-import com.example.ui.components.TvKeyButton
 import com.example.ui.theme.LiveRed
 import com.example.ui.theme.TabloTeal
 import com.example.ui.theme.TextMuted
@@ -65,460 +81,803 @@ import com.example.ui.theme.TvFocusHighlight
 import com.example.ui.theme.TvSurface
 import com.example.ui.theme.TvSurfaceElevated
 
+enum class ConnectMode(val label: String) {
+    AUTO_DISCOVER("Network Auto-Detect"),
+    ACCOUNT_LOGIN("Tablo Account Login"),
+    DIRECT_IP("Direct IP")
+}
+
 @Composable
 fun TabloConnectionScreen(
     currentDevice: TabloDevice?,
     discoveredDevices: List<TabloDevice>,
     isScanning: Boolean,
+    isConnecting: Boolean,
+    isLoggingIn: Boolean = false,
+    connectionError: String? = null,
+    loginError: String? = null,
     onStartScan: () -> Unit,
     onSelectDevice: (TabloDevice) -> Unit,
-    onManualConnect: (String) -> Unit,
+    onManualConnect: (String, Int) -> Unit,
+    onLoginAccount: (String, String) -> Unit,
+    onDisconnect: () -> Unit,
     onBack: () -> Unit,
+    onRequestTopNav: () -> Unit = {},
+    onNavigateLeftPage: () -> Unit = {},
+    onNavigateRightPage: () -> Unit = {},
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
-    var showManualIpDialog by remember { mutableStateOf(false) }
+    var selectedMode by remember { mutableStateOf(ConnectMode.AUTO_DISCOVER) }
+    val tabFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+
+    LaunchedEffect(focusRequester) {
+        if (focusRequester != null) {
+            tabFocusRequester.safeRequest()
+        }
+    }
+
+    // Account login inputs
+    var emailInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
+    var activeInputField by remember { mutableStateOf(0) } // 0 = email, 1 = password
+
+    // Direct IP inputs
+    var ipInput by remember { mutableStateOf("192.168.1.") }
+    var portInput by remember { mutableIntStateOf(8885) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(TvBackground)
-            .padding(horizontal = 32.dp, vertical = 20.dp)
+            .padding(horizontal = 28.dp, vertical = 16.dp)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK
-                ) {
-                    onBack()
-                    true
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_BACK -> {
+                            onBack()
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> {
+                            onRequestTopNav()
+                            true
+                        }
+                        else -> false
+                    }
                 } else false
             }
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            // Left Column: Device Connection Status & Account Info
-            Column(
-                modifier = Modifier
-                    .weight(1.1f)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "CONNECT YOUR TABLO",
-                    color = TextPrimary,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = "Your Fire TV communicates directly with your Tablo over your local home network for zero-lag OTA HD playback.",
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                // Current Connected Device Card
-                if (currentDevice != null) {
-                    ConnectedDeviceCard(device = currentDevice)
-                }
-
-                // Discovery Action Buttons
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = onStartScan,
-                        enabled = !isScanning,
-                        colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
-                        modifier = Modifier.height(44.dp)
-                    ) {
-                        if (isScanning) {
-                            CircularProgressIndicator(
-                                color = Color.Black,
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Discovering...", color = Color.Black, fontWeight = FontWeight.Bold)
-                        } else {
-                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.Black)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Find Tablo", color = Color.Black, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Button(
-                        onClick = { showManualIpDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = TvSurfaceElevated),
-                        modifier = Modifier.height(44.dp)
-                    ) {
-                        Icon(Icons.Default.SettingsEthernet, contentDescription = null, tint = TabloTeal)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Enter IP Manually", color = TextPrimary, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-
-                // Tuner Awareness Card
-                TunerAwarenessCard(currentDevice = currentDevice)
-            }
-
-            Spacer(modifier = Modifier.width(32.dp))
-
-            // Right Column: Discovered Devices List
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-            ) {
-                Text(
-                    text = "DISCOVERED TABLO DEVICES",
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-
-                if (discoveredDevices.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(TvSurface)
-                            .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Default.Router, contentDescription = null, tint = TextMuted, modifier = Modifier.size(36.dp))
-                            Text(
-                                text = if (isScanning) "Searching local network..." else "No Tablo detected yet",
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Click 'Find Tablo' to scan association server and UDP broadcasts.",
-                                color = TextMuted,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(discoveredDevices) { device ->
-                            val isCurrent = currentDevice?.host == device.host
-                            DiscoveredDeviceCard(
-                                device = device,
-                                isConnected = isCurrent,
-                                onConnect = { onSelectDevice(device) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Manual IP Dialog
-        if (showManualIpDialog) {
-            ManualIpEntryDialog(
-                onConnect = { ip ->
-                    showManualIpDialog = false
-                    onManualConnect(ip)
-                },
-                onDismiss = { showManualIpDialog = false }
-            )
-        }
-    }
-}
-
-@Composable
-fun ConnectedDeviceCard(device: TabloDevice) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF101A29))
-            .border(BorderStroke(1.5.dp, TabloTeal.copy(alpha = 0.8f)), RoundedCornerShape(12.dp))
-            .padding(18.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header Row with Title and Mode Tabs
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = TabloTeal,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                Column {
                     Text(
-                        text = "CONNECTED TABLO",
-                        color = TabloTeal,
-                        fontSize = 12.sp,
+                        text = "TABLO CONNECT & LOGIN",
+                        color = TextPrimary,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp
                     )
+                    Text(
+                        text = "Connect via local network discovery, Tablo Account login, or direct IP address.",
+                        color = TextMuted,
+                        fontSize = 12.sp
+                    )
                 }
 
-                Box(
+                // Mode Selector Tabs
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ConnectMode.values().forEach { mode ->
+                        val isSelected = selectedMode == mode
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isFocused by interactionSource.collectIsFocusedAsState()
+
+                        val bg = when {
+                            isFocused -> TabloTeal
+                            isSelected -> TvSurfaceElevated
+                            else -> TvSurface
+                        }
+                        val textCol = when {
+                            isFocused -> Color.Black
+                            isSelected -> TabloTeal
+                            else -> TextSecondary
+                        }
+                        val border = when {
+                            isFocused -> BorderStroke(2.dp, TvFocusHighlight)
+                            isSelected -> BorderStroke(1.dp, TabloTeal.copy(alpha = 0.6f))
+                            else -> BorderStroke(1.dp, TvBorder)
+                        }
+
+                        var tabMod = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(bg)
+                            .border(border, RoundedCornerShape(8.dp))
+                            .clickable(
+                                interactionSource = interactionSource,
+                                indication = null,
+                                onClick = { selectedMode = mode }
+                            )
+                            .focusable(interactionSource = interactionSource)
+                            .onKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                    if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                                        onRequestTopNav()
+                                        true
+                                    } else false
+                                } else false
+                            }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+
+                        if (mode == ConnectMode.AUTO_DISCOVER) {
+                            tabMod = tabMod.focusRequester(tabFocusRequester)
+                        }
+
+                        Box(
+                            modifier = tabMod,
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = mode.label,
+                                color = textCol,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Main Two-Column Layout
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // Left Column: Interactive Mode Panel
+                Column(
                     modifier = Modifier
-                        .background(Color(0x3300D2B4), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .weight(1.15f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("ACTIVE", color = TabloTeal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+                    when (selectedMode) {
+                        ConnectMode.AUTO_DISCOVER -> {
+                            AutoDiscoverPanel(
+                                isScanning = isScanning,
+                                isConnecting = isConnecting,
+                                onStartScan = onStartScan
+                            )
+                        }
+                        ConnectMode.ACCOUNT_LOGIN -> {
+                            AccountLoginPanel(
+                                email = emailInput,
+                                password = passwordInput,
+                                activeField = activeInputField,
+                                isLoggingIn = isLoggingIn,
+                                onEmailChange = { emailInput = it },
+                                onPasswordChange = { passwordInput = it },
+                                onFieldSelect = { activeInputField = it },
+                                onSubmit = { onLoginAccount(emailInput, passwordInput) }
+                            )
+                        }
+                        ConnectMode.DIRECT_IP -> {
+                            DirectIpPanel(
+                                ip = ipInput,
+                                port = portInput,
+                                isConnecting = isConnecting,
+                                onIpChange = { ipInput = it },
+                                onPortChange = { portInput = it },
+                                onConnect = { onManualConnect(ipInput, portInput) }
+                            )
+                        }
+                    }
 
-            Text(
-                text = device.name,
-                color = TextPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
+                    // Error Message Banner if present
+                    val activeError = loginError ?: connectionError
+                    if (activeError != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x28EF4444))
+                                .border(BorderStroke(1.dp, Color(0x66EF4444)), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = activeError,
+                                color = TextPrimary,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    Text("Model", color = TextMuted, fontSize = 11.sp)
-                    Text(device.model, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Column {
-                    Text("IP Address", color = TextMuted, fontSize = 11.sp)
-                    Text(device.host, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Column {
-                    Text("Tuners", color = TextMuted, fontSize = 11.sp)
-                    Text("${device.tunerCount} Hardware Tuners", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Column {
-                    Text("Firmware", color = TextMuted, fontSize = 11.sp)
-                    Text(device.firmware, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun TunerAwarenessCard(currentDevice: TabloDevice?) {
-    val tuners = currentDevice?.tunerCount ?: 4
-    val active = currentDevice?.activeTuners ?: 0
-    val available = tuners - active
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(TvSurface)
-            .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(10.dp))
-            .padding(14.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "TUNER RESOURCE ALLOCATION",
-                color = TextSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.8.sp
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                for (t in 0 until tuners) {
-                    val inUse = t < active
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(28.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (inUse) LiveRed.copy(alpha = 0.8f) else TabloTeal.copy(alpha = 0.8f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (inUse) "Tuner ${t + 1} (In Use)" else "Tuner ${t + 1} (Free)",
-                            color = Color.Black,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
+                    // Connected Device Status Summary (if currently connected)
+                    if (currentDevice != null) {
+                        ConnectedDeviceCard(
+                            device = currentDevice,
+                            onDisconnect = onDisconnect,
+                            onBackToLive = onBack
                         )
                     }
                 }
-            }
-            Text(
-                text = "Multiview automatically manages stream allocation to prevent exceeding hardware tuner capacity.",
-                color = TextMuted,
-                fontSize = 11.sp
-            )
-        }
-    }
-}
 
-@Composable
-fun DiscoveredDeviceCard(
-    device: TabloDevice,
-    isConnected: Boolean,
-    onConnect: () -> Unit
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-
-    val background = when {
-        isFocused -> TabloTeal
-        isConnected -> Color(0xFF101D2B)
-        else -> TvSurface
-    }
-    val titleColor = if (isFocused) Color.Black else TextPrimary
-    val subColor = if (isFocused) Color(0xCC000000) else TextSecondary
-    val border = if (isFocused) BorderStroke(2.dp, TvFocusHighlight) else BorderStroke(1.dp, TvBorder)
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(background)
-            .border(border, RoundedCornerShape(10.dp))
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onConnect)
-            .focusable(interactionSource = interactionSource)
-            .padding(16.dp)
-    ) {
-        Column {
-            Text(
-                text = device.name,
-                color = titleColor,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "${device.model} • ${device.host} • ${device.tunerCount} Tuners",
-                color = subColor,
-                fontSize = 12.sp
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .background(
-                    if (isFocused) Color.Black else if (isConnected) TabloTeal else TvSurfaceElevated,
-                    RoundedCornerShape(6.dp)
-                )
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-            Text(
-                text = if (isConnected) "Connected" else "Connect",
-                color = if (isFocused) TabloTeal else if (isConnected) Color.Black else TextPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-fun ManualIpEntryDialog(
-    onConnect: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var ipText by remember { mutableStateOf("192.168.1.") }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .width(440.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xF20F172A))
-                .border(BorderStroke(1.5.dp, TabloTeal), RoundedCornerShape(14.dp))
-                .padding(22.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Enter Tablo IP Address",
-                        color = TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
-                    }
-                }
-
-                Box(
+                // Right Column: Discovered Devices List
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(TvSurfaceElevated, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .weight(1f)
+                        .fillMaxHeight()
                 ) {
-                    Text(
-                        text = ipText,
-                        color = TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "AVAILABLE TABLO DEVICES",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        if (discoveredDevices.isNotEmpty()) {
+                            Text(
+                                text = "${discoveredDevices.size} found",
+                                color = TabloTeal,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
 
-                // Numeric Keypad for Fire TV Remote
-                val numRows = listOf(
-                    listOf("1", "2", "3"),
-                    listOf("4", "5", "6"),
-                    listOf("7", "8", "9"),
-                    listOf(".", "0", "DEL")
-                )
-
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    numRows.forEach { row ->
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                    if (discoveredDevices.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(TvSurface)
+                                .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            row.forEach { key ->
-                                TvKeyButton(
-                                    text = key,
-                                    onClick = {
-                                        if (key == "DEL") {
-                                            if (ipText.isNotEmpty()) ipText = ipText.dropLast(1)
-                                        } else {
-                                            ipText += key
-                                        }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Router,
+                                    contentDescription = null,
+                                    tint = TextMuted,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Text(
+                                    text = if (isScanning) "Searching for Tablos..." else "No Tablo Devices Found",
+                                    color = TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = if (isScanning) {
+                                        "Querying Tablo Association server and UDP broadcast on port 8881..."
+                                    } else {
+                                        "Select 'Network Auto-Detect' and press Find Tablo, sign in with your Tablo account, or connect via Direct IP."
                                     },
-                                    modifier = Modifier.weight(1f).height(44.dp)
+                                    color = TextMuted,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(discoveredDevices) { device ->
+                                DiscoveredDeviceCard(
+                                    device = device,
+                                    isCurrentlyConnected = currentDevice?.serverId == device.serverId ||
+                                            (currentDevice?.host == device.host && currentDevice.port == device.port),
+                                    isConnecting = isConnecting,
+                                    onSelect = { onSelectDevice(device) }
                                 )
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth()
+@Composable
+private fun AutoDiscoverPanel(
+    isScanning: Boolean,
+    isConnecting: Boolean,
+    onStartScan: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(TvSurface)
+            .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(12.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(Icons.Default.Router, contentDescription = null, tint = TabloTeal, modifier = Modifier.size(24.dp))
+            Column {
+                Text("Local Network Auto-Discovery", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Standard Tablo discovery per API docs (UDP 8881/8882 & getipinfo). No password required.",
+                    color = TextMuted,
+                    fontSize = 11.sp
+                )
+            }
+        }
+
+        Text(
+            text = "Your Fire TV discovers Tablo DVRs on the local Wi-Fi/Ethernet network. Tablo 2nd/3rd Gen, DUAL, and QUAD units do not require a password for direct local streaming.",
+            color = TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 16.sp
+        )
+
+        Button(
+            onClick = onStartScan,
+            enabled = !isScanning && !isConnecting,
+            colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+        ) {
+            if (isScanning) {
+                CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Scanning Network...", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            } else {
+                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.Black)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Scan for Tablo Devices", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccountLoginPanel(
+    email: String,
+    password: String,
+    activeField: Int,
+    isLoggingIn: Boolean,
+    onEmailChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onFieldSelect: (Int) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val focusManager = LocalFocusManager.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(TvSurface)
+            .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(12.dp))
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.AccountCircle, contentDescription = null, tint = TabloTeal, modifier = Modifier.size(22.dp))
+            Text("Tablo Account Cloud Sign-In", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        }
+
+        // Native Fire TV Email Field
+        OutlinedTextField(
+            value = email,
+            onValueChange = onEmailChange,
+            label = { Text("Tablo Account Email", fontSize = 12.sp) },
+            placeholder = { Text("you@example.com", color = TextMuted.copy(alpha = 0.6f)) },
+            leadingIcon = {
+                Icon(Icons.Default.Email, contentDescription = null, tint = TabloTeal)
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next
+            ),
+            keyboardActions = KeyboardActions(
+                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedBorderColor = TvFocusHighlight,
+                unfocusedBorderColor = TvBorder,
+                focusedContainerColor = TvSurfaceElevated,
+                unfocusedContainerColor = TvBackground,
+                focusedLabelColor = TabloTeal,
+                unfocusedLabelColor = TextMuted,
+                cursorColor = TabloTeal
+            ),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Native Fire TV Password Field
+        OutlinedTextField(
+            value = password,
+            onValueChange = onPasswordChange,
+            label = { Text("Password", fontSize = 12.sp) },
+            placeholder = { Text("Enter password", color = TextMuted.copy(alpha = 0.6f)) },
+            leadingIcon = {
+                Icon(Icons.Default.Lock, contentDescription = null, tint = TabloTeal)
+            },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    focusManager.clearFocus()
+                    if (email.isNotBlank() && password.isNotBlank()) onSubmit()
+                }
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedBorderColor = TvFocusHighlight,
+                unfocusedBorderColor = TvBorder,
+                focusedContainerColor = TvSurfaceElevated,
+                unfocusedContainerColor = TvBackground,
+                focusedLabelColor = TabloTeal,
+                unfocusedLabelColor = TextMuted,
+                cursorColor = TabloTeal
+            ),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Sign In Button
+        Button(
+            onClick = {
+                focusManager.clearFocus()
+                onSubmit()
+            },
+            enabled = !isLoggingIn && email.isNotBlank(),
+            colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+        ) {
+            if (isLoggingIn) {
+                CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Signing In...", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            } else {
+                Text("Sign In & Find Tablo", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectIpPanel(
+    ip: String,
+    port: Int,
+    isConnecting: Boolean,
+    onIpChange: (String) -> Unit,
+    onPortChange: (Int) -> Unit,
+    onConnect: () -> Unit
+) {
+    val focusManager = LocalFocusManager.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(TvSurface)
+            .border(BorderStroke(1.dp, TvBorder), RoundedCornerShape(12.dp))
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.SettingsEthernet, contentDescription = null, tint = TabloTeal, modifier = Modifier.size(22.dp))
+            Text("Direct IP & Port Connection", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        }
+
+        // Native Fire TV IP Input Field
+        OutlinedTextField(
+            value = ip,
+            onValueChange = onIpChange,
+            label = { Text("Tablo IP Address", fontSize = 12.sp) },
+            placeholder = { Text("e.g. 192.168.1.100", color = TextMuted.copy(alpha = 0.6f)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    focusManager.clearFocus()
+                    if (ip.isNotBlank()) onConnect()
+                }
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedBorderColor = TvFocusHighlight,
+                unfocusedBorderColor = TvBorder,
+                focusedContainerColor = TvSurfaceElevated,
+                unfocusedContainerColor = TvBackground,
+                focusedLabelColor = TabloTeal,
+                unfocusedLabelColor = TextMuted,
+                cursorColor = TabloTeal
+            ),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Port Selection Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Port:", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            listOf(8885, 8881).forEach { p ->
+                val isSelected = port == p
+                Button(
+                    onClick = { onPortChange(p) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSelected) TabloTeal else TvSurfaceElevated
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.height(38.dp)
                 ) {
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = TvSurfaceElevated),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Cancel", color = TextPrimary)
-                    }
-                    Button(
-                        onClick = { if (ipText.isNotBlank()) onConnect(ipText.trim()) },
-                        colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Connect", color = Color.Black, fontWeight = FontWeight.Bold)
-                    }
+                    Text(
+                        text = ":$p",
+                        color = if (isSelected) Color.Black else TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+
+        Button(
+            onClick = {
+                focusManager.clearFocus()
+                onConnect()
+            },
+            enabled = !isConnecting && ip.isNotBlank(),
+            colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+        ) {
+            if (isConnecting) {
+                CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Testing Connection...", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            } else {
+                Text("Connect to $ip:$port", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectedDeviceCard(
+    device: TabloDevice,
+    onDisconnect: () -> Unit,
+    onBackToLive: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0x1A00C896))
+            .border(BorderStroke(1.5.dp, TabloTeal), RoundedCornerShape(12.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = TabloTeal, modifier = Modifier.size(20.dp))
+                Text(
+                    text = device.name,
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Text(
+                text = "${device.host}:${device.port}",
+                color = TabloTeal,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text("Model: ${device.model}", color = TextSecondary, fontSize = 12.sp)
+            Text("Tuners: ${device.tunerCount}", color = TextSecondary, fontSize = 12.sp)
+            if (device.firmware.isNotEmpty()) {
+                Text("Firmware: ${device.firmware}", color = TextMuted, fontSize = 11.sp)
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                onClick = onBackToLive,
+                colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+                modifier = Modifier
+                    .weight(1.5f)
+                    .height(38.dp)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Live Multiview", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+
+            Button(
+                onClick = onDisconnect,
+                colors = ButtonDefaults.buttonColors(containerColor = LiveRed.copy(alpha = 0.25f)),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = null, tint = LiveRed)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Disconnect", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscoveredDeviceCard(
+    device: TabloDevice,
+    isCurrentlyConnected: Boolean,
+    isConnecting: Boolean,
+    onSelect: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    val bg = when {
+        isCurrentlyConnected -> Color(0x2200C896)
+        isFocused -> TvSurfaceElevated
+        else -> TvSurface
+    }
+    val border = when {
+        isFocused -> BorderStroke(2.dp, TvFocusHighlight)
+        isCurrentlyConnected -> BorderStroke(1.5.dp, TabloTeal)
+        else -> BorderStroke(1.dp, TvBorder)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(bg)
+            .border(border, RoundedCornerShape(10.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onSelect
+            )
+            .focusable(interactionSource = interactionSource)
+            .padding(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isCurrentlyConnected) TabloTeal else TvSurfaceElevated),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tv,
+                        contentDescription = null,
+                        tint = if (isCurrentlyConnected) Color.Black else TabloTeal,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Column {
+                    Text(
+                        text = device.name,
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${device.model} • ${device.host}:${device.port}",
+                        color = TextMuted,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            if (isCurrentlyConnected) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TabloTeal.copy(alpha = 0.2f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text("ACTIVE", color = TabloTeal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = onSelect,
+                    enabled = !isConnecting,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isFocused) TabloTeal else TvSurfaceElevated
+                    ),
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Text(
+                        text = "Connect",
+                        color = if (isFocused) Color.Black else TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

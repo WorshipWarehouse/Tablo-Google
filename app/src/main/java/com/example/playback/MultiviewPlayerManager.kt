@@ -12,17 +12,25 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.example.data.remote.DiagnosticsInterceptor
+import com.example.data.remote.NetworkDiagnosticsLogger
 import com.example.model.TabloChannel
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 @OptIn(UnstableApi::class)
-class MultiviewPlayerManager(private val context: Context) {
+class MultiviewPlayerManager(
+    private val context: Context,
+    private val onPlayerError: (Int, String) -> Unit
+) {
     private val maxStreams = 4
     private val players = mutableMapOf<Int, ExoPlayer>()
     private val currentUrls = mutableMapOf<Int, String>()
@@ -30,12 +38,43 @@ class MultiviewPlayerManager(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var focusedTileIndex = 0
 
-    // Reliable fallback stream
-    private val fallbackStreamUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+    // Separate OkHttpClient for ExoPlayer HLS network requests (Port 80)
+    // Free of Tablo HMAC / Lighthouse auth headers; includes DiagnosticsInterceptor for logging
+    private val exoOkHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val request = chain.request()
+            val url = request.url
+            val query = url.query
+            val builder = request.newBuilder()
 
-    init {
-        // Players are initialized lazily on-demand when assigned channels
-    }
+            // Strictly set User-Agent and strip any auth / signing headers
+            builder.header("User-Agent", "Tablo-FAST/1.7.0")
+            builder.removeHeader("Authorization")
+            builder.removeHeader("Date")
+            builder.removeHeader("Lighthouse")
+
+            if (query != null) {
+                if (query.endsWith("=") && query.count { it == '=' } == 1) {
+                    val bareKey = query.removeSuffix("=")
+                    val newUrl = url.newBuilder()
+                        .query(null)
+                        .addQueryParameter(bareKey, null) // Passing null value prevents '=' addition
+                        .build()
+                    builder.url(newUrl)
+                } else if (!query.contains("=")) {
+                    val newUrl = url.newBuilder()
+                        .query(null)
+                        .addQueryParameter(query, null)
+                        .build()
+                    builder.url(newUrl)
+                }
+            }
+            chain.proceed(builder.build())
+        }
+        .addInterceptor(DiagnosticsInterceptor())
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
 
     fun getPlayer(tileIndex: Int): ExoPlayer {
         return getOrCreatePlayer(tileIndex)
@@ -55,40 +94,27 @@ class MultiviewPlayerManager(private val context: Context) {
             )
             .build()
 
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("TabloTV/1.0 (Android TV; ExoPlayer)")
-            .setConnectTimeoutMs(8000)
-            .setReadTimeoutMs(12000)
-            .setAllowCrossProtocolRedirects(true)
+        val okHttpDataSourceFactory = OkHttpDataSource.Factory(exoOkHttpClient)
+            .setUserAgent("Tablo-FAST/1.7.0")
 
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+        val dataSourceFactory = DefaultDataSource.Factory(context, okHttpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
-        val safeMediaCodecSelector = MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
-            val decoders = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
-            // Filter out buggy goldfish emulator decoder that crashes with Error 0xe / Bad Address
-            val stableDecoders = decoders.filter { !it.name.contains("goldfish", ignoreCase = true) }
-            if (stableDecoders.isNotEmpty()) stableDecoders else decoders
-        }
-
         val renderersFactory = DefaultRenderersFactory(context)
-            .setMediaCodecSelector(safeMediaCodecSelector)
+            .setMediaCodecSelector(MediaCodecSelector.DEFAULT)
             .setEnableDecoderFallback(true)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
         val player = ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .build().apply {
-                repeatMode = Player.REPEAT_MODE_ALL
+                repeatMode = Player.REPEAT_MODE_OFF
                 playWhenReady = true
                 val isFocused = (tileIndex == focusedTileIndex)
                 volume = if (isFocused) 1.0f else 0.0f
                 trackSelectionParameters = trackSelectionParameters
                     .buildUpon()
-                    .setMaxVideoSize(1280, 720)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isFocused)
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                     .build()
                 addListener(object : Player.Listener {
@@ -99,35 +125,87 @@ class MultiviewPlayerManager(private val context: Context) {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
+                        val formattedErr = formatPlaybackError(error)
                         val currentRetry = retryCounts.getOrDefault(tileIndex, 0)
                         Log.w(
                             "MultiviewPlayer",
-                            "Playback error on tile $tileIndex (attempt $currentRetry): ${error.errorCodeName} - ${error.message}"
+                            "Playback error on tile $tileIndex (attempt $currentRetry):\n$formattedErr"
                         )
-                        val activeUrl = currentUrls[tileIndex] ?: fallbackStreamUrl
+                        val activeUrl = currentUrls[tileIndex]
+                        if (activeUrl == null) {
+                            onPlayerError(tileIndex, formattedErr)
+                            return
+                        }
                         if (currentRetry < 2) {
                             retryCounts[tileIndex] = currentRetry + 1
                             handler.postDelayed({
-                                if (players[tileIndex] != null) {
-                                    stop()
-                                    setMediaItem(MediaItem.fromUri(activeUrl))
-                                    prepare()
-                                    play()
+                                val p = players[tileIndex]
+                                if (p != null) {
+                                    try {
+                                        p.stop()
+                                        p.setMediaItem(MediaItem.fromUri(activeUrl))
+                                        p.prepare()
+                                        p.play()
+                                    } catch (e: Exception) {
+                                        Log.e("MultiviewPlayer", "Error retrying tile $tileIndex: ${e.message}")
+                                    }
                                 }
                             }, 1500L)
                         } else {
-                            Log.e("MultiviewPlayer", "Tile $tileIndex exceeded max retries. Switching to fallback stream.")
-                            currentUrls[tileIndex] = fallbackStreamUrl
-                            stop()
-                            setMediaItem(MediaItem.fromUri(fallbackStreamUrl))
-                            prepare()
-                            play()
+                            Log.e("MultiviewPlayer", "Tile $tileIndex exceeded max retries:\n$formattedErr")
+                            onPlayerError(tileIndex, formattedErr)
                         }
                     }
                 })
             }
         players[tileIndex] = player
         return player
+    }
+
+    private fun formatPlaybackError(error: PlaybackException): String {
+        val errorCodeName = error.errorCodeName
+        var causeClass = ""
+        var causeMsg = ""
+        var httpCode: Int? = null
+        var httpUrl: String? = null
+
+        var current: Throwable? = error
+        while (current != null) {
+            val className = current.javaClass.simpleName
+            val msg = current.message
+            if (current !is PlaybackException && causeClass.isEmpty()) {
+                causeClass = className.ifBlank { current.javaClass.name }
+                causeMsg = msg ?: ""
+            }
+            if (current is HttpDataSource.HttpDataSourceException) {
+                httpUrl = current.dataSpec?.uri?.toString()
+                if (current is HttpDataSource.InvalidResponseCodeException) {
+                    httpCode = current.responseCode
+                }
+            }
+            current = current.cause
+        }
+
+        val sb = StringBuilder()
+        sb.append("[").append(errorCodeName).append("]")
+        if (causeClass.isNotEmpty()) {
+            sb.append(" ").append(causeClass)
+            if (causeMsg.isNotEmpty()) {
+                sb.append(": ").append(causeMsg)
+            }
+        } else if (!error.message.isNullOrBlank()) {
+            sb.append(" ").append(error.message)
+        }
+
+        if (httpCode != null || !httpUrl.isNullOrBlank()) {
+            val redactedUrl = NetworkDiagnosticsLogger.redactSensitiveData(httpUrl ?: "")
+            if (httpCode != null) {
+                sb.append("\nHTTP ").append(httpCode).append(" @ ").append(redactedUrl)
+            } else if (redactedUrl.isNotEmpty()) {
+                sb.append("\nURL: ").append(redactedUrl)
+            }
+        }
+        return sb.toString()
     }
 
     fun playChannel(tileIndex: Int, channel: TabloChannel, streamUrl: String) {
@@ -158,12 +236,6 @@ class MultiviewPlayerManager(private val context: Context) {
             // Only active audio tile outputs sound; all others remain at full broadcast video brightness
             val isFocused = (tileIndex == focusedTileIndex)
             player.volume = if (isFocused) 1.0f else 0.0f
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setMaxVideoSize(1280, 720)
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isFocused)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .build()
         } catch (e: Exception) {
             Log.e("MultiviewPlayer", "Failed to start playback on tile $tileIndex: ${e.message}")
         }
@@ -215,6 +287,84 @@ class MultiviewPlayerManager(private val context: Context) {
     fun resumeAll() {
         players.values.forEach { it.play() }
     }
+
+    fun stopTile(tileIndex: Int) {
+        try {
+            val player = players[tileIndex]
+            if (player != null) {
+                player.stop()
+                player.clearMediaItems()
+            }
+            currentUrls.remove(tileIndex)
+            retryCounts.remove(tileIndex)
+        } catch (e: Exception) {
+            Log.e("MultiviewPlayer", "Error stopping tile $tileIndex: ${e.message}")
+        }
+    }
+
+    fun releaseTile(tileIndex: Int) {
+        try {
+            val player = players.remove(tileIndex)
+            if (player != null) {
+                player.release()
+            }
+            currentUrls.remove(tileIndex)
+            retryCounts.remove(tileIndex)
+        } catch (e: Exception) {
+            Log.e("MultiviewPlayer", "Error releasing tile $tileIndex: ${e.message}")
+        }
+    }
+
+    /**
+     * Re-key an already playing tile without recreating its player or reloading
+     * its HLS URL.  This is used when the UI compacts tiles after a removal.
+     */
+    fun moveTile(fromTile: Int, toTile: Int) {
+        if (fromTile == toTile) return
+        // The destination must be empty; releasing it here avoids leaking a
+        // decoder if a caller ever violates that contract.
+        releaseTile(toTile)
+        players.remove(fromTile)?.let { players[toTile] = it }
+        currentUrls.remove(fromTile)?.let { currentUrls[toTile] = it }
+        retryCounts.remove(fromTile)?.let { retryCounts[toTile] = it }
+        if (focusedTileIndex == fromTile) focusedTileIndex = toTile
+        setAudioTile(focusedTileIndex)
+    }
+
+    fun togglePlayPause(tileIndex: Int): Boolean {
+        val player = players[tileIndex] ?: return false
+        return if (player.isPlaying) {
+            player.pause()
+            false
+        } else {
+            player.play()
+            true
+        }
+    }
+
+    fun isPlaying(tileIndex: Int): Boolean {
+        return players[tileIndex]?.isPlaying == true
+    }
+
+    fun play(tileIndex: Int) {
+        players[tileIndex]?.play()
+    }
+
+    fun pause(tileIndex: Int) {
+        players[tileIndex]?.pause()
+    }
+
+    fun goToLive(tileIndex: Int) {
+        val player = players[tileIndex] ?: return
+        try {
+            player.seekToDefaultPosition()
+            player.play()
+        } catch (e: Exception) {
+            Log.e("MultiviewPlayer", "Error seeking to live on tile $tileIndex: ${e.message}")
+        }
+    }
+
+    fun getCurrentUrl(tileIndex: Int): String? = currentUrls[tileIndex]
 
     fun releaseAll() {
         players.values.forEach { it.release() }

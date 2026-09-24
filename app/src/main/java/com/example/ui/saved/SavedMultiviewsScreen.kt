@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -34,8 +36,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,16 +48,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalFocusManager
+import com.example.ui.util.safeRequest
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.model.MultiviewLayoutType
 import com.example.model.SavedMultiviewItem
 import com.example.model.TabloChannel
-import com.example.ui.components.TvRemoteKeyboard
 import com.example.ui.theme.LiveRed
 import com.example.ui.theme.TabloTeal
 import com.example.ui.theme.TextMuted
@@ -67,18 +76,29 @@ import com.example.ui.theme.TvSurfaceElevated
 @Composable
 fun SavedMultiviewsScreen(
     savedItems: List<SavedMultiviewItem>,
-    currentChannels: List<TabloChannel>,
+    currentChannels: List<TabloChannel?>,
     currentLayout: MultiviewLayoutType,
     onLoadMultiview: (SavedMultiviewItem) -> Unit,
     onSaveNewMultiview: (String, MultiviewLayoutType, List<TabloChannel>) -> Unit,
     onRenameMultiview: (Long, String) -> Unit,
     onDeleteMultiview: (Long) -> Unit,
     onBack: () -> Unit,
+    onRequestTopNav: () -> Unit = {},
+    onNavigateLeftPage: () -> Unit = {},
+    onNavigateRightPage: () -> Unit = {},
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
     var itemToRename by remember { mutableStateOf<SavedMultiviewItem?>(null) }
     var itemToDelete by remember { mutableStateOf<SavedMultiviewItem?>(null) }
+    val actionFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+
+    LaunchedEffect(focusRequester) {
+        if (focusRequester != null) {
+            actionFocusRequester.safeRequest()
+        }
+    }
 
     Box(
         modifier = modifier
@@ -86,11 +106,18 @@ fun SavedMultiviewsScreen(
             .background(TvBackground)
             .padding(horizontal = 28.dp, vertical = 20.dp)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK
-                ) {
-                    onBack()
-                    true
+                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_BACK -> {
+                            onBack()
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> {
+                            onRequestTopNav()
+                            true
+                        }
+                        else -> false
+                    }
                 } else false
             }
     ) {
@@ -120,7 +147,17 @@ fun SavedMultiviewsScreen(
 
                 Button(
                     onClick = { showSaveDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = TabloTeal)
+                    colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+                    modifier = Modifier
+                        .focusRequester(actionFocusRequester)
+                        .onKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                                    onRequestTopNav()
+                                    true
+                                } else false
+                            } else false
+                        }
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black)
                     Spacer(modifier = Modifier.width(6.dp))
@@ -178,7 +215,7 @@ fun SavedMultiviewsScreen(
                 defaultName = "My Multiview",
                 onSave = { name ->
                     showSaveDialog = false
-                    onSaveNewMultiview(name, currentLayout, currentChannels)
+                    onSaveNewMultiview(name, currentLayout, currentChannels.filterNotNull())
                 },
                 onDismiss = { showSaveDialog = false }
             )
@@ -384,41 +421,52 @@ fun SaveMultiviewNameDialog(
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(TvSurfaceElevated, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Text(
-                        text = if (name.isEmpty()) "Enter name..." else name,
-                        color = if (name.isEmpty()) TextMuted else TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                val focusManager = LocalFocusManager.current
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = { Text("e.g. Sunday Football", color = TextMuted.copy(alpha = 0.6f)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            focusManager.clearFocus()
+                            if (name.isNotBlank()) onSave(name.trim())
+                        }
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedBorderColor = TvFocusHighlight,
+                        unfocusedBorderColor = TvBorder,
+                        focusedContainerColor = TvSurfaceElevated,
+                        unfocusedContainerColor = TvSurface,
+                        cursorColor = TabloTeal
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 // Quick preset suggestions
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     listOf("Sunday Football", "Local News", "Sports Night", "Primetime").forEach { suggestion ->
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(Color(0x331E293B))
                                 .clickable { name = suggestion }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
-                            Text(suggestion, color = TabloTeal, fontSize = 11.sp)
+                            Text(suggestion, color = TabloTeal, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
 
-                TvRemoteKeyboard(
-                    onKeyPress = { char -> name += char },
-                    onBackspace = { if (name.isNotEmpty()) name = name.dropLast(1) },
-                    onClear = { name = "" },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -427,13 +475,18 @@ fun SaveMultiviewNameDialog(
                     Button(
                         onClick = onDismiss,
                         colors = ButtonDefaults.buttonColors(containerColor = TvSurfaceElevated),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Cancel", color = TextPrimary)
                     }
                     Button(
-                        onClick = { if (name.isNotBlank()) onSave(name.trim()) },
+                        onClick = {
+                            focusManager.clearFocus()
+                            if (name.isNotBlank()) onSave(name.trim())
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = TabloTeal),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Save Multiview", color = Color.Black, fontWeight = FontWeight.Bold)
