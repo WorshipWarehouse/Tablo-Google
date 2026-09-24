@@ -20,9 +20,9 @@ class GuideFocusTest {
         assertEquals("next", airingAtAnchor(listOf(airing("first", start, 30), airing("next", start + 30 * 60_000L, 30)), start + 30 * 60_000L)?.airingId)
     }
 
-    @Test fun inProgressInitialFocusAnchorsAtWindowStart() {
+    @Test fun inProgressInitialFocusAnchorsAtProgramStart() {
         val windowStart = 1_000_000L
-        assertEquals(windowStart, guideAnchorFor(airing("live", windowStart - 15 * 60_000L, 60), windowStart))
+        assertEquals(windowStart - 15 * 60_000L, guideAnchorFor(airing("live", windowStart - 15 * 60_000L, 60), windowStart))
     }
 
     @Test fun repeatedVerticalMovesDoNotDriftAnchor() {

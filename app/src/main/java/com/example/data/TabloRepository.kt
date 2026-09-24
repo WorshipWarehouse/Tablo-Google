@@ -19,6 +19,11 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -435,24 +440,23 @@ class TabloRepository(
         // 1. Cloud Airings Endpoint FIRST for Tablo Gen 4
         if (device.isGen4 && !device.lighthouseToken.isNullOrBlank() && !device.accountToken.isNullOrBlank()) {
             try {
-                for (channelId in channelSet) {
-                    val cloudAiringsUrl = "${TabloGen4Auth.CLOUD_HOST}/api/v2/account/guide/channels/$channelId/airings/$dateStr/"
-                    try {
-                        val rawAirings = apiService.getGen4CloudAirings(
-                            url = cloudAiringsUrl,
-                            userAgent = TabloGen4Auth.USER_AGENT_CLOUD,
-                            authorization = "Bearer ${device.accountToken}",
-                            lighthouse = device.lighthouseToken
-                        )
-                        for (raw in rawAirings) {
-                            TabloApiMapper.airingFromGen4Cloud(channelId, raw, now)?.let { airing ->
-                                if (airing.endTimeMillis > windowStart && airing.startTimeMillis < windowEnd) {
-                                    airingsFound.add(airing)
-                                }
+                // The API is per-channel. Fetch a small bounded batch in parallel instead
+                // of making a long serial chain before the guide can render.
+                val cloudAirings = fetchAiringsConcurrently(channelSet) { channelId ->
+                    apiService.getGen4CloudAirings(
+                        url = "${TabloGen4Auth.CLOUD_HOST}/api/v2/account/guide/channels/$channelId/airings/$dateStr/",
+                        userAgent = TabloGen4Auth.USER_AGENT_CLOUD,
+                        authorization = "Bearer ${device.accountToken}",
+                        lighthouse = device.lighthouseToken
+                    )
+                }
+                cloudAirings.forEach { (channelId, rawAirings) ->
+                    rawAirings.forEach { raw ->
+                        TabloApiMapper.airingFromGen4Cloud(channelId, raw, now)?.let { airing ->
+                            if (airing.endTimeMillis > windowStart && airing.startTimeMillis < windowEnd) {
+                                airingsFound.add(airing)
                             }
                         }
-                    } catch (e: Exception) {
-                        Log.w("TabloRepository", "Cloud airings fetch failed for channel $channelId: ${e.message}")
                     }
                 }
 
@@ -470,27 +474,24 @@ class TabloRepository(
         // 2. Local Fallback Endpoint (/views/guide/channels/{id}/airings?date={YYYY-MM-DD}&state=requested)
         if (device.isGen4 && !device.lighthouseToken.isNullOrBlank()) {
             try {
-                for (channelId in channelSet) {
+                val localAirings = fetchAiringsConcurrently(channelSet) { channelId ->
                     val path = "/views/guide/channels/$channelId/airings?date=$dateStr&state=requested"
                     val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("GET", path, "")
-                    val localAiringsUrl = "${device.localBaseUrl}$path"
-                    try {
-                        val localAirings = apiService.getGen4LocalAirings(
-                            url = localAiringsUrl,
-                            userAgent = TabloGen4Auth.USER_AGENT_WATCH,
-                            authorization = authHeader,
-                            date = dateHeader,
-                            lighthouse = device.lighthouseToken
-                        )
-                        for (raw in localAirings) {
-                            TabloApiMapper.airingFromGen4Cloud(channelId, raw, now)?.let { airing ->
-                                if (airing.endTimeMillis > windowStart && airing.startTimeMillis < windowEnd) {
-                                    airingsFound.add(airing)
-                                }
+                    apiService.getGen4LocalAirings(
+                        url = "${device.localBaseUrl}$path",
+                        userAgent = TabloGen4Auth.USER_AGENT_WATCH,
+                        authorization = authHeader,
+                        date = dateHeader,
+                        lighthouse = device.lighthouseToken
+                    )
+                }
+                localAirings.forEach { (channelId, rawAirings) ->
+                    rawAirings.forEach { raw ->
+                        TabloApiMapper.airingFromGen4Cloud(channelId, raw, now)?.let { airing ->
+                            if (airing.endTimeMillis > windowStart && airing.startTimeMillis < windowEnd) {
+                                airingsFound.add(airing)
                             }
                         }
-                    } catch (e: Exception) {
-                        Log.w("TabloRepository", "Local airings fallback failed for channel $channelId: ${e.message}")
                     }
                 }
 
@@ -522,7 +523,9 @@ class TabloRepository(
             // 1. Tablo Gen 4 HMAC-MD5 signed watch flow
             if (device.isGen4 || channel.identifier != null) {
                 val path = "/guide/channels/$channelIdentifier/watch"
-                val watchUrl = "${device.localBaseUrl}$path"
+                // `lh` is a required bare query parameter. It is deliberately excluded
+                // from the HMAC path, matching the Gen-4 client protocol.
+                val watchUrl = "${device.localBaseUrl}$path?lh"
                 val bodyStr = TabloGen4Auth.makeWatchBody(device.clientId)
                 val (authHeader, dateHeader) = TabloGen4Auth.makeDeviceAuth("POST", path, bodyStr)
 
@@ -557,6 +560,13 @@ class TabloRepository(
                 }
             }
 
+            // Gen-4 is the only supported hardware. Do not fall through to a
+            // legacy endpoint or public demo stream: doing so hides the real
+            // authentication/playback failure and can surface unrelated 403 errors.
+            if (device.isGen4 || channel.identifier != null) {
+                return@withContext null
+            }
+
             // 2. Legacy Tablo 2nd/3rd Gen watch flow
             val legacyPath = if (channel.channelPath.isNotBlank()) channel.channelPath else "/guide/channels/$channelIdentifier"
             val watchUrl = "${device.localBaseUrl}$legacyPath/watch"
@@ -577,9 +587,27 @@ class TabloRepository(
                 return@withContext WatchSessionResult(channel.streamUrl)
             }
 
-            // 4. Test stream fallback
-            WatchSessionResult(getFallbackHlsStream(channel))
+            null
         }
+
+    private suspend fun fetchAiringsConcurrently(
+        channelIds: Set<String>,
+        fetch: suspend (String) -> List<com.example.data.remote.TabloGen4CloudAiring>
+    ): List<Pair<String, List<com.example.data.remote.TabloGen4CloudAiring>>> = coroutineScope {
+        val concurrency = Semaphore(8)
+        channelIds.map { channelId ->
+            async {
+                concurrency.withPermit {
+                    try {
+                        channelId to fetch(channelId)
+                    } catch (e: Exception) {
+                        Log.w("TabloRepository", "Guide airings fetch failed for channel $channelId: ${e.message}")
+                        channelId to emptyList()
+                    }
+                }
+            }
+        }.awaitAll()
+    }
 
     suspend fun fetchWatchStreamUrl(device: TabloDevice, channel: TabloChannel): String? {
         return fetchWatchStreamSession(device, channel)?.playlistUrl
@@ -651,16 +679,6 @@ class TabloRepository(
             if (found != null) {
                 if (found.startsWith("http")) found else "$baseUrl$found"
             } else null
-        }
-    }
-
-    private fun getFallbackHlsStream(channel: TabloChannel): String {
-        val hash = kotlin.math.abs(channel.channelId.hashCode() + channel.majorNumber) % 4
-        return when (hash) {
-            0 -> "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-            1 -> "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
-            2 -> "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
-            else -> "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
         }
     }
 
