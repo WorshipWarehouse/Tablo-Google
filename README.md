@@ -110,36 +110,79 @@ adb -s DEVICE_IP:5555 install -r outputs/tablo-multiview-debug.apk
 To launch the app immediately via ADB:
 
 ```bash
-adb shell am start -n com.example/.MainActivity
+adb shell am start -n com.aistudio.tablotv.qrxmtp/.MainActivity
 ```
 
 ---
 
-### Optional: Manual Building from Source
+### Build a Sideloadable APK
 
-If you wish to compile or modify the application locally:
+The project builds a debug APK that can be installed directly on Fire TV. The
+app targets **Fire OS 6 and later** (`minSdk 25`); Fire OS 6 is Android 7.1.
 
-- Android Studio Koala / Ladybug or newer
-- Android SDK 36 (compileSdk 36, minSdk 24)
-- Java 17+
+#### Prerequisites
 
-#### Building the Project
+- Android Studio Ladybug or newer, with Android SDK Platform 36 installed
+- JDK 17
+- An internet connection for Gradle's first dependency download
 
-Run Gradle to compile and assemble the debug APK:
+Confirm that the Android SDK is available to Gradle. Android Studio normally
+creates `local.properties` for you. For command-line builds, either set
+`ANDROID_HOME` to the SDK directory or create `local.properties` in the project
+root with an SDK path, for example on macOS:
 
-```bash
-gradle assembleDebug
+```properties
+sdk.dir=/Users/your-name/Library/Android/sdk
 ```
 
-The Gradle build automatically runs `copyDebugApkToOutputs`, placing the updated APK at:
+#### Build
+
+From the repository root, use the checked-in Gradle wrapper (do not require a
+separately installed Gradle version):
+
+```bash
+./gradlew clean assembleDebug
+```
+
+On Windows:
+
+```powershell
+.\gradlew.bat clean assembleDebug
+```
+
+The build copies the final debug APK to:
+
 ```text
 outputs/tablo-multiview-debug.apk
 ```
 
-2. Run unit and Robolectric tests:
+Run the local unit tests with:
+
+```bash
+./gradlew :app:testDebugUnitTest
+```
+
+#### Install on Fire TV
+
+1. On the Fire TV, enable **Developer Options** and **ADB Debugging**.
+2. Connect the computer and Fire TV to the same network.
+3. Connect and install, replacing `FIRE_TV_IP` with the device IP address:
+
    ```bash
-   gradle :app:testDebugUnitTest
+   adb connect FIRE_TV_IP:5555
+   adb install -r outputs/tablo-multiview-debug.apk
    ```
+
+4. Launch the app:
+
+   ```bash
+   adb shell am start -n com.aistudio.tablotv.qrxmtp/.MainActivity
+   ```
+
+If the app is already installed and Android rejects the update because the
+signing key changed, uninstall the old debug build first with
+`adb uninstall com.aistudio.tablotv.qrxmtp`, then install again. This removes
+the app's local presets and connection information.
 
 #### Deploying & Sideloading via ADB (Android TV / Fire TV)
 
@@ -160,7 +203,7 @@ outputs/tablo-multiview-debug.apk
    ```
 4. Launch the application immediately via ADB:
    ```bash
-   adb shell am start -n com.example/.MainActivity
+   adb shell am start -n com.aistudio.tablotv.qrxmtp/.MainActivity
    ```
 
 ---
