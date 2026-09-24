@@ -689,8 +689,15 @@ class TabloViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
-        super.onCleared()
+        autoHideJob?.cancel()
+        dataLoadJob?.cancel()
+        tuningJobs.values.forEach { it.cancel() }
+        keepaliveJobs.values.forEach { it.cancel() }
+        tuningJobs.clear()
+        keepaliveJobs.clear()
+        sessionTokens.clear()
         playerManager.releaseAll()
+        super.onCleared()
     }
 
     private companion object {
