@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 class TabloViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getInstance(application)
     private val savedRepository = SavedMultiviewRepository(database.savedMultiviewDao())
-    private val deviceRepository = TabloDeviceRepository(database.tabloDeviceDao())
+    private val deviceRepository = TabloDeviceRepository(application, database.tabloDeviceDao())
     private val favoriteRepository = com.example.data.local.FavoriteChannelRepository(database.favoriteChannelDao())
     private val tabloRepository = TabloRepository()
 
